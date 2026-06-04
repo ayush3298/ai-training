@@ -81,6 +81,7 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 | Chapter | New Part | Hands-on |
 |---------|----------|----------|
 | 04 — RAG | Multi-tenant retrieval & isolation | tenant filter + a test proving user A can't retrieve user B's docs |
+| 04 — RAG | Vector databases in depth — ANN index types & tradeoffs (HNSW, IVF/IVF-PQ, DiskANN; recall vs latency vs memory; the `ef_search`/`nprobe` knob); distance metrics (cosine vs dot vs L2) matched to the embedding model; store selection (dedicated — Pinecone/Weaviate/Qdrant/Milvus — vs `pgvector` vs OpenSearch/Mongo Atlas; managed vs self-hosted in Docker); metadata pre- vs post-filtering, namespaces/collections; quantization (scalar/product/binary) for memory & cost; hybrid search & fusion (BM25 + dense, RRF) in the DB; upserts, persistence, backups, and reindex/migration when the embedding model changes; scaling (sharding, replication, latency budget) | stand up `pgvector` in Docker, load the corpus, build an HNSW index; compare recall + p95 latency vs the brute-force store from Part C; add a metadata pre-filter and prove it scopes results |
 | 05 — Agents | Tool & output safety | validate/allowlist tool args before execution; injection-via-tool-output test |
 | 07 — Evaluation | Testing code vs evaluating the model | mock the LLM; deterministic suite separate from the eval set |
 | 08 — Deployment | Concurrency & throughput; safe output rendering | parallel fan-out + throughput measure; sanitize a rendered output |
@@ -89,7 +90,7 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 
 ### Rollout order
 
-1. **The six grafts** — small, additive, immediately useful to the cohort already in those chapters.
+1. **The seven grafts** — small, additive, immediately useful to the cohort already in those chapters.
 2. **Security, Privacy & Governance** — highest risk reduction.
 3. **Frameworks & MCP** — most time-sensitive / 2026-relevant.
 4. **LLM Application Architecture & System Design** — ties the whole spine together; highest leverage for engineers shipping real systems.
