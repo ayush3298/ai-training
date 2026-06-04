@@ -296,10 +296,12 @@ def judge(question, context, answer):
 - **The biases** (real, silently skew results): **position bias** (favoring first/last — run *both*
   orderings and average), **verbosity bias** (favoring longer answers regardless of quality — watch
   length confounds), **self-preference** (a model rating its own family higher — judge with a
-  *different* model family for high-stakes calls).
+  *different* model family for high-stakes calls), and **authority bias** (favoring answers that *sound*
+  confident/citational — formal tone, hedged-then-decisive, dressed with references — over answers that
+  are actually correct; an answer that fabricates a citation can out-score a hedged-but-right one).
 - *Build consequence:* Design around the biases or your eval lies to you confidently. At minimum: swap
-  positions in pairwise, control for length, and never let one model be both sole author and sole judge
-  of a high-stakes decision.
+  positions in pairwise, control for length, don't reward confident phrasing over correctness, and never
+  let one model be both sole author and sole judge of a high-stakes decision.
 
 **17. Validate the judge against humans — an unvalidated judge is just another opinion.**
 Before trusting a judge to gate deploys, **confirm it agrees with human judgment**: have humans grade
@@ -426,6 +428,143 @@ agent loops (Day 9–10), and the guardrails of Part E. No single piece makes th
   redundancy and graceful degradation, so that when (not if) the model misbehaves or the API hiccups,
   the feature degrades gracefully instead of breaking. Reliability is your architecture, not the model's
   promise.
+
+---
+
+## Part G — Online eval & evaluating without a gold answer
+
+Part A (concept 3) named the offline/online split; Parts B–C built the metrics and the judge. This Part
+turns the *same validated judge* on live traffic and answers the question prod actually poses: **how do
+you measure quality when nobody hand-labeled the answer?**
+
+**29. Online eval = the offline evaluators, pointed at sampled live traffic.**
+Offline eval (concept 3, Part D) runs your fixed `(input, expected)` set in CI — that's the *gate* that
+blocks a bad deploy. **Online eval** runs the *same evaluators* — the validated faithfulness/relevance
+judge from Part C — on a **sample of real production requests after ship**. It's not a different judge or
+a different metric; it's the **same instrument in a different deployment mode**: offline *gates* (pass/fail
+before merge), online *monitors* (a tracked number on live traffic). You sample (e.g. 5–20% of requests,
+or all flagged ones) because judging 100% of prod is a cost you rarely need. Store **each judge verdict as
+a score attached to that request's trace** (the latency/cost/error trace of concept 26), right next to the
+user's own signal — thumbs, stars, edit-or-accept. Now one request carries both *what the model judged* and
+*what the user felt*, joinable later.
+- *Build consequence:* You don't build a second eval system for production — you redeploy the offline one
+  in monitor mode. If your judge isn't trustworthy offline (concept 17), it's worthless online; validate
+  once, run everywhere.
+
+**30. Reference-free evaluation — scoring when there is no gold answer.**
+The offline set has an `expected`; prod does not — real users ask questions you never wrote a gold answer
+for. So you measure quality *without a reference*, using signals that need only the input, the retrieved
+context, and the output:
+- **Groundedness against retrieved context** — the Part-C faithfulness judge run with **no reference**, only
+  the context: *is every claim supported by what was retrieved?* This is the workhorse — it needs no gold
+  answer, only the context you already have in the trace.
+- **Self-consistency** — sample the answer N times; if the model contradicts *itself* across samples, the
+  claim is likely fabricated (developed as a detection method in concept 33). The reference-free fallback
+  when there's *no* context to ground against.
+- **Answer-relevance to the question** — does the output actually address what was asked? (concept 13's
+  dimension, judged reference-free against the question alone.)
+- **Refusal / "I-don't-know" rate** — how often the system abstains; a sudden spike means retrieval or the
+  domain shifted under it.
+- **User-signal proxies** — thumbs-down, re-asks, edits, escalations, abandons: cheap real-world labels you
+  didn't have to write.
+Together these let you compute a **live hallucination rate** — the fraction of sampled answers the
+groundedness judge marks unsupported — *with nobody hand-labeling prod.*
+- *Build consequence:* "We can't eval prod, there's no ground truth" is false. Reference-free groundedness
+  + user signals give you a defensible quality number on traffic you've never seen — the only kind of number
+  that catches the failures your offline set couldn't imagine.
+
+**31. The hallucination *rate* vs. the groundedness *guardrail* — same check, two jobs.**
+Concept 24 already runs a faithfulness/groundedness check as an **output guardrail** — per request, inline,
+**blocking** the unsupported answer before it ships. Online eval runs the **same check** to compute an
+**aggregated, tracked metric** — the live hallucination rate over sampled traffic — which **monitors**, not
+blocks. Identical instrument, two roles: the guardrail is a *gate on one request* (fail-safe, concept 25);
+the rate is a *trend on the population* (an incident signal, concept 26). One stops a bad answer now; the
+other tells you the system is getting worse before users revolt.
+- *Build consequence:* Don't conflate them and don't duplicate the logic — write the groundedness check
+  once, wire it inline as the blocking guardrail *and* sample its verdicts into the monitored rate. A rising
+  rate with a steady guardrail block-count means borderline answers are creeping toward your threshold.
+
+> **Note — the feedback flywheel lives elsewhere.** Turning these online signals *back into eval cases* (the
+> failed-prod-case → eval-set loop) is concept 27's flywheel and is owned by the Monitoring/Drift extension
+> chapter — referenced here, not re-taught. This Part is about *measuring* live quality; that one is about
+> *growing the set* from it.
+
+**Hands-on (Part G):** From your Day-15 request logs, **sample 20% of requests**. Run the Part-C faithfulness
+judge on each in **reference-free mode** (grade against the *retrieved context only*, no gold answer) and
+compute a **live hallucination rate** = unsupported / sampled. Separately, **wire a thumbs-down signal**
+attached to each request's trace/score (concept 29). Now pull **one thumbs-down** and walk its trace: it
+reveals an **off-topic retrieved chunk** dragging the answer off-question. Name the artifact you'd fix —
+here, the *retriever/chunking* (concept 13: low context precision/relevance), **not** the generation prompt.
+
+---
+
+## Part H — Hallucination: a named taxonomy, detection, and the BLEU/ROUGE reframe
+
+The chapter has measured hallucination all along — *faithfulness* (concept 13), the groundedness guardrail
+(concept 24), the live rate (Part G). This Part **names** the failure, gives its standard taxonomy, gathers
+the prevention levers scattered across the course into one strategy, adds the *detection* methods the chapter
+lacked, and reframes BLEU/ROUGE (concept 12) to explain *why* LLM-as-judge is the default.
+
+**32. The hallucination taxonomy — intrinsic vs. extrinsic.**
+A **hallucination** is model output presented as fact that isn't supported. Two distinct kinds, with
+different fixes:
+- **Intrinsic / faithfulness** — the output **contradicts the provided context**. This is the **RAG failure**,
+  and the chapter already measures it: it's exactly low **faithfulness** (concept 13) and what the groundedness
+  guardrail (concept 24) blocks. The truth was *in hand* and the model strayed from it.
+- **Extrinsic / factuality** — the output **invents claims unverifiable against any source**: fabricated
+  citations, made-up API methods, plausible-but-wrong numbers, a confidently cited paper that doesn't exist.
+  There's no provided context to contradict — the claim is simply ungrounded in reality. Harder, because you
+  can't catch it by comparing to retrieved context; there *is* no context.
+- *Build consequence:* The two demand different defenses. Intrinsic → fixable with grounding/RAG and a
+  groundedness check (you have the context to check against). Extrinsic → needs an external source to verify
+  against (tools, search, citations) or self-consistency (concept 33) when no source exists. Diagnosing
+  *which* kind you have tells you which lever to pull.
+
+**33. The strategy — prevention levers (consolidated) and the detection methods the chapter lacked.**
+*Prevention* (levers already scattered across the course, gathered here as one strategy): **grounding/RAG**
+(Day 7 — give the model the facts), **low temperature** (Day 2 — less sampling-driven invention),
+**"answer only from the provided context" prompts** (Day 5–6), **abstention licensing** — explicitly permit
+"I don't know" so the model isn't forced to fabricate (Day 5–6, concept 30's refusal rate), **tool use** for
+ground-truth lookups (Day 9–10), and **structured output** to constrain the surface the model can invent on
+(Day 3). Read together these are a *hallucination-prevention strategy*, not six unrelated tricks.
+*Detection* (methods the chapter didn't yet have):
+- **Span-level claim verification** — decompose the answer into individual claims and check **each span**
+  against the retrieved evidence; surface the result as **citations** (claim → supporting chunk). Modern best
+  practice and finer-grained than a single faithfulness score — it tells you *which sentence* is unsupported.
+- **NLI entailment checks** — use a natural-language-inference model to test whether the context **entails**
+  each claim (entailment = supported, contradiction/neutral = flag). Cheaper and more deterministic than a
+  full judge for the per-claim check.
+- **LLM-judge faithfulness** — already built in Part C (concept 15); the general-purpose grounded check.
+- **SelfCheckGPT / SelfCheck-NLI** — sample **N** completions for the same question and check them for
+  **self-consistency** (do they agree?). Inconsistency across samples implies fabrication. Use **only when
+  there is NO ground-truth context** to check against (the extrinsic case) — it costs **N× inference** and is
+  your fallback precisely when span-verification has nothing to verify against.
+- *Build consequence:* Match method to case. Have retrieved context → **span-level verification** (cheapest
+  per-claim signal, and you get citations for free). No context (open-domain factuality) → **self-consistency**,
+  knowing you pay N× inference for it. Don't run SelfCheckGPT on a RAG answer you could just ground-check.
+
+**34. The BLEU/ROUGE reframe — why LLM-as-judge is the default, not a luxury.**
+Concept 12 introduced BLEU/ROUGE as cheap overlap metrics against one reference. The reframe: they were
+**built for constrained tasks** (translation, summarization) where surface overlap with a reference tracks
+quality. On **open-ended LLM output** they have **low correlation with human judgment** — a brilliant answer
+worded unlike the reference scores low, a mediocre one parroting reference words scores high (concept 12's
+"unfixable limit," now quantified). *This is the empirical reason LLM-as-judge is the default:* a well-built
+judge agrees with human ratings at roughly **~85%** — *higher than human–human agreement* on the same task —
+while BLEU/ROUGE correlate weakly (G-Eval / **Liu et al., EMNLP 2023**). The judge isn't a convenience that
+replaced a perfectly good metric; it exists because the overlap metrics **don't measure what we mean by
+"good"** on open-ended text.
+- *Build consequence:* Keep BLEU/ROUGE only as cheap sanity signals on constrained tasks (or as a near-free
+  regression tripwire); for open-ended quality, the validated judge (concept 17) is the *primary* gate, and
+  citing its human-agreement number is how you defend the eval itself.
+
+**Hands-on (Part H):** Take **5 RAG answers** — some genuinely grounded, some with a **deliberately injected
+fabricated fact** (a fake citation or invented number). Build a **span-level faithfulness check**: split each
+answer into claims and run the **Part-C judge** (concept 15) per claim, flagging every claim **not supported
+by the retrieved context**. For each failure, **classify it intrinsic vs. extrinsic** (concept 32) —
+contradicts the context (intrinsic) vs. unverifiable against any source (extrinsic). Then run a
+**self-consistency (SelfCheckGPT-style) check** on **one question with NO provided context**: sample **3**
+answers and show whether they agree. Finish with **one sentence** on when you'd reach for self-consistency
+(no context / extrinsic factuality) vs. span-verification (context in hand / intrinsic faithfulness).
 
 ---
 

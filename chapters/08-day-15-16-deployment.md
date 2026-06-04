@@ -141,6 +141,33 @@ The key never lives in client code or the repo; it's injected from the environme
 
 ---
 
+## Part G — Tracing with spans, and shadow-mode rollout
+
+**20. Promote the flat log into a trace: one request = a parent span with nested child spans.**
+Part F's `tracked_call` (concept 16) logs *one row per model call* — fine for a single-shot request, useless for a multi-step RAG or agent request where the interesting question is *which step*. Promote it to a **trace**: the request becomes a **parent span**, and each sub-step — every retrieval, every tool call, every model call — becomes a **child span** nested under it, each timed and attributed on its own. Now a slow or wrong multi-step request is debugged **by step**: you open the trace and read *which child span burned the latency* and *which retrieval returned the junk chunk*. A flat log can only tell you the whole request was slow or wrong; it can't point at the step, so you're back to guessing.
+- *Build consequence:* The moment a request has more than one model/retrieval/tool hop (every RAG bot, every agent), flat logs stop being enough — you need the span tree. Same data you already log (concept 16), restructured as a parent-with-children so latency and failure are attributable to a step instead of a request.
+
+**21. The vendor-neutral standard: OpenTelemetry GenAI semantic conventions.**
+Don't invent your own span schema — emit the **OpenTelemetry (OTel) GenAI semantic conventions**, the 2026 vendor-neutral standard for LLM traces, so any backend can read them. Span types you'll emit: **inference** (a model call), **embeddings**, **retrieval**, and **execute_tool**. Core attributes on each: `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens`, and `gen_ai.response.finish_reasons` — which are *exactly* Part F's existing log fields (model, tokens, stop reason) renamed and hung on a span tree instead of flattened into a row. Note these conventions are **still maturing as of 2026** (attribute names and the content-capture model are not fully frozen) — adopt them, but pin your instrumentation version and expect minor churn.
+- *Build consequence:* Instrument once to a standard, not to a vendor. Because the attributes *are* your concept-16 fields, the migration from flat logging to OTel spans is restructuring, not rewriting — and it keeps you free to switch backends without re-instrumenting.
+
+**22. Backends that speak this without adopting an orchestration framework.**
+You do *not* need to rewrite onto a framework to get traces — these read OTel/GenAI spans (or drop in even more cheaply):
+- **Langfuse** — open-source, self-hostable in Docker; the common default for owning your trace data.
+- **Arize Phoenix** — open-source, strong on evals and drift detection alongside tracing.
+- **LangSmith** — managed, rich trace UI.
+- **Helicone** — a drop-in **proxy**: change one base URL and you get logging/tracing with zero code instrumentation.
+- **OTel collector** — route spans to whatever you already run.
+- *Build consequence:* Tracing is an *additive* layer, not a framework migration. The cheapest start is a proxy (one base-URL change); the most control is self-hosted Langfuse/Phoenix in Docker. Either way you keep the architecture from Parts A–D — you're only changing where the spans land.
+
+**23. Shadow mode — replay live traffic through the candidate, score it, never show a user.**
+Concept 14's ladder went eval-gate → canary, but canary still puts the change in front of *real users* at 1%. **Shadow mode** closes that gap: **duplicate** live traffic and replay it through the new prompt/model version *in parallel*, score the shadow output with your online judge (concept 17 / Day 13), and **never return it to the user** — the user only ever sees the current production version. It's the safest pre-canary validation because a bad candidate is scored, not served. Motivation: as of 2026, **prompt updates cause most LLM production incidents** — so shadow + canary matter for **prompt changes as much as model changes**; the prompt is where the regressions actually come from (concept 13). Extend the rollout ladder to: **eval-gate → shadow → canary 1% → 5% → 20% → 50% → 100% → instant rollback** (concept 14).
+- *Build consequence:* Before a single user touches a new prompt/model, you already have real-traffic judge scores for it from shadow mode — go/no-go on evidence, not hope. Offline eval predicts on a fixed set (Day 13); shadow confirms on *live* traffic with *zero* user risk; canary then confirms on real outcomes. Shadow is the rung that makes the inevitable prompt regression a logged non-event instead of an incident.
+
+> The *running-in-production* loop these spans and scores feed — drift detection, online evaluation, turning feedback into eval cases, and incident triage — is deepened in the **Monitoring, Drift & Continuous-Improvement** extension chapter. This Part gets you emitting the traces and running shadow; that chapter operates on them over time.
+
+---
+
 **Resources**
 - Anthropic & OpenAI — rate-limit docs (RPM/TPM), prompt-caching guides, batch API docs, streaming docs, and model-deprecation/versioning pages.
 - A read on **load balancing / horizontal scaling** and **canary/gradual rollouts** at the concept level (general backend ops, applied to an LLM service).
@@ -155,6 +182,8 @@ The key never lives in client code or the repo; it's injected from the environme
 6. **Survive a 429:** simulate rate-limit/transient errors and confirm your retry+backoff+timeout+fallback path degrades gracefully instead of erroring to the user.
 7. **Version + roll back:** tag two prompt versions, record which produced each logged response, and demonstrate switching back to the previous version (a config flip, not a code rewrite).
 8. *(Stretch)* **Semantic cache:** cache answered questions by embedding; serve a cached answer when a new question is similar enough. Measure the cache-hit rate and name one question you'd *refuse* to cache.
+9. **Trace it by step:** instrument the Day-15 endpoint to emit a **parent span per request** with **child spans** for retrieval and the model call (OTel GenAI attribute names — `gen_ai.request.model`, `gen_ai.usage.input_tokens`/`output_tokens`, `gen_ai.response.finish_reasons` — or a Langfuse/Phoenix SDK self-hosted in Docker). Run a few multi-step requests, pull up **one trace**, and read off *which span dominated latency* and *which chunks retrieval returned*.
+10. **Shadow a second prompt version:** capture a batch of real requests, then **replay** them through a second prompt version *in parallel with* production — score both versions' outputs with your online judge and log the scores side by side, **without exposing the shadow output to any user**. Make a go/no-go call on the candidate from the side-by-side scores alone.
 
 **Questions**
 
