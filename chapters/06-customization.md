@@ -1,4 +1,4 @@
-## Day 11–12 — Customization: adapting a model to your task (without training one)
+## Chapter 6 — Customization: adapting a model to your task (without training one)
 
 **Goal:** Learn the full ladder of ways to make a model better at *your* task, and — given a real
 problem — pick the right rung. By the end you can look at "the model isn't good enough" and
@@ -18,8 +18,8 @@ brief a vendor — not to run training**.
 > conceptually, but **run no training job** — the skill is choosing correctly, not operating a
 > trainer.
 
-**Suggested split:** Day 11 = Parts A–C (the adaptation ladder, what fine-tuning really is, the
-modern landscape). Day 12 = Parts D–E (data — the thing that actually decides success — and the
+**Suggested split:** Session 1 = Parts A–C (the adaptation ladder, what fine-tuning really is, the
+modern landscape); Session 2 = Parts D–E (data — the thing that actually decides success — and the
 decision/measurement framework), plus the deliverable.
 
 ---
@@ -29,8 +29,8 @@ decision/measurement framework), plus the deliverable.
 **1. There's a ladder of adaptation techniques, cheapest to costliest — always climb from the
 bottom.**
 Four rungs, in the order you should *try* them:
-1. **Prompt engineering** (Day 5–6) — minutes, no data, instant iteration. Change the instructions.
-2. **RAG** (Day 7–8) — hours to days. Put the right *facts* in context at runtime.
+1. **Prompt engineering** (Chapter 3) — minutes, no data, instant iteration. Change the instructions.
+2. **RAG** (Chapter 4) — hours to days. Put the right *facts* in context at runtime.
 3. **Fine-tuning** — days to weeks: collect data, train, host, version, evaluate. Change the model's
    *default behavior*.
 4. **Pretraining a foundation model** — months and millions of dollars. **You will never do this.**
@@ -53,7 +53,7 @@ This is the single most important distinction in the section, and the one people
 
 **3. Why fine-tuning is rarely the *first* answer.**
 Even when the gap is genuinely behavioral, prompting usually gets you most of the way: a sharp
-system prompt + a few good few-shot examples (Day 5–6) often matches what people *assume* requires
+system prompt + a few good few-shot examples (Chapter 3) often matches what people *assume* requires
 fine-tuning — with zero data collection, zero training, and instant iteration. Fine-tuning earns its
 place only when (a) prompting has clearly plateaued, (b) you need the behavior at a consistency or
 scale prompting can't hit, or (c) you want to bake the behavior in so you can *drop* the long prompt
@@ -177,7 +177,7 @@ in Section 7.
 
 **13. The decision tree — run it before anyone trains anything.**
 1. **Is it a knowledge gap?** (model lacks information) → **RAG.** Stop.
-2. **Is it a behavior/format/style gap?** → first, **engineer the prompt + few-shot** (Day 5–6). Did
+2. **Is it a behavior/format/style gap?** → first, **engineer the prompt + few-shot** (Chapter 3). Did
    that solve it? → **Stop, you're done.**
 3. **Did prompting plateau** *and* do you have (or can you build) a few hundred consistent examples
    *and* is the task narrow and stable enough to be worth maintaining a custom model? → **fine-tune.**
@@ -187,7 +187,7 @@ in Section 7.
   justifies ongoing maintenance." If any of those is missing, climb back down the ladder.
 
 **14. You cannot tell if fine-tuning helped without an eval set.**
-"It seems better" is not a result. You need the same `(input, expected)` eval harness from Day 7–8 /
+"It seems better" is not a result. You need the same `(input, expected)` eval harness from Chapter 4 /
 Section 7: score the *base model with your best prompt* against the *fine-tuned model* on the
 held-out set, with a real metric. Often the honest finding is "the well-prompted base model was
 already good enough" — which saves you the entire fine-tuning lifecycle. That's a *win*, not a
@@ -213,7 +213,7 @@ runtime. Each handles the gap it's actually good at: tuning owns behavior, retri
   framing.
 - A short read on **LoRA/PEFT** at the conceptual level (what an adapter is, why it's cheap) — enough
   to follow vendor docs, not to implement it.
-- Your own Day 5–6 (prompting), Day 7–8 (RAG) — the two rungs you must rule out before fine-tuning.
+- Your own Chapter 3 (prompting), Chapter 4 (RAG) — the two rungs you must rule out before fine-tuning.
 
 **Hands-on tasks**
 1. **Diagnose the gap (×4):** for each scenario, label it *knowledge* vs *behavior* and name the rung
@@ -310,11 +310,11 @@ hand-written JSONL dataset (~10 consistent examples) for a chosen task, with a h
 marked — to show you understand the data shape. **No training run required;** the artifact is the
 reasoning.
 
-**Daily update (DM to Ayush):** one line — the decision you reached for your scenarios and any open
+**Daily update:** one line — the decision you reached for your scenarios and any open
 question (e.g. "mapped 4 use cases to the ladder: 3 are RAG/prompt, 1 is a fine-tune candidate
 pending an eval set; drafted a 10-line JSONL for the classifier").
 
-**Time:** ~1.5–2 days. Day 11: Parts A–C (the ladder, what fine-tuning is, the landscape). Day 12:
+**Time:** two sessions. Session 1: Parts A–C (the ladder, what fine-tuning is, the landscape). Session 2:
 Parts D–E (data + the decision/measurement framework) and the deliverable memo.
 
 ---

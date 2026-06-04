@@ -1,4 +1,4 @@
-## Day 13–14 — Evaluation, Safety & Reliability: shipping with confidence, not vibes
+## Chapter 7 — Evaluation, Safety & Reliability: shipping with confidence, not vibes
 
 **Goal:** Build the discipline that makes an LLM feature trustworthy. By the end you can assemble a
 real eval set, *choose and compute the right metric for each task type* (and know what each one
@@ -8,18 +8,18 @@ question that matters before shipping: *"is this good enough, and how do you **k
 
 **Why this matters:** LLMs are non-deterministic and **fail silently** — the same prompt gives a
 great answer today and a confidently wrong one tomorrow, with nothing flashing red. "It worked when
-I tried it" is exactly how broken features reach production. Every earlier day ended on the same
-unfinished sentence — *you can't tell if retrieval helped (Day 7), if the agent went off the rails
-(Day 9–10), or if fine-tuning was worth it (Day 11–12)* — **without an eval set and the right
+I tried it" is exactly how broken features reach production. Every earlier chapter ended on the same
+unfinished sentence — *you can't tell if retrieval helped (Chapter 4), if the agent went off the rails
+(Chapter 5), or if fine-tuning was worth it (Chapter 6)* — **without an eval set and the right
 metric**. This is that discipline. It's the single skill separating engineers who *hope* their
 system works from those who can *prove* it with a number, defend a change, and sleep after a deploy.
 
-> **Setup assumed:** same as before. We evaluate things you already built — your Day 7–8 RAG system
-> and/or your Day 9–10 agent. Metrics are mostly plain arithmetic (we compute several by hand); the
-> judge is just another model call (Day 3). No new infrastructure.
+> **Setup assumed:** same as before. We evaluate things you already built — your Chapter 4 RAG system
+> and/or your Chapter 5 agent. Metrics are mostly plain arithmetic (we compute several by hand); the
+> judge is just another model call (Chapter 2). No new infrastructure.
 
-**Suggested split:** Day 13 = Parts A–C (why eval is the core skill; the metrics catalog from first
-principles — the heart of this block; LLM-as-judge). Day 14 = Parts D–F (regression/iteration loop,
+**Suggested split:** Session 1 = Parts A–C (why eval is the core skill; the metrics catalog from first
+principles — the heart of this block; LLM-as-judge); Session 2 = Parts D–F (regression/iteration loop,
 safety guardrails, production reliability), plus the deliverable.
 
 ---
@@ -28,10 +28,10 @@ safety guardrails, production reliability), plus the deliverable.
 
 **1. Non-determinism + silent failure = you cannot eyeball quality at scale.**
 Two properties make LLM features uniquely hard to trust. **Non-determinism:** identical input can
-produce different output run to run (Day 2's sampling), so "it worked once" proves nothing about the
+produce different output run to run (Chapter 1's sampling), so "it worked once" proves nothing about the
 next call — you're measuring a *distribution* of behavior, not a fixed function. **Silent failure:**
-a wrong answer looks exactly like a right one — fluent, confident, well-formatted (Day 2's
-hallucination, Day 7's retrieval miss). Normal code throws when it breaks; an LLM just *says
+a wrong answer looks exactly like a right one — fluent, confident, well-formatted (Chapter 1's
+hallucination, Chapter 4's retrieval miss). Normal code throws when it breaks; an LLM just *says
 something wrong* with a straight face. You cannot catch that by skimming a handful of outputs, and
 your eye is biased toward the cases you happened to try.
 - *Build consequence:* Manual spot-checking neither scales nor catches the failures that matter. You
@@ -170,7 +170,7 @@ FP=4, FN=2, TN=86. Precision = 8/12 = **0.67**; Recall = 8/10 = **0.80**; F1 =
   a bad classifier ship.
 
 **11. Retrieval metrics — the new first principle is *order*.**
-RAG retrieval (Day 7) outputs a **ranked list** of k chunks, so the question changes from "right or
+RAG retrieval (Chapter 4) outputs a **ranked list** of k chunks, so the question changes from "right or
 wrong" to **"is the right thing in the list, and how near the top?"** Position matters: the model
 attends best to the top of the context, and every slot costs tokens.
 - **Hit-rate@k / Recall@k — the existence question.** Did a correct chunk make the top-k *at all*? If
@@ -179,7 +179,7 @@ attends best to the top of the context, and every slot costs tokens.
   metric — it measures the precondition for a good answer. *Blind spot:* ignores *where* in the
   top-k it landed.
 - **Precision@k — the noise question.** Of the k chunks returned, how many were relevant?
-  `relevant_in_topk / k`. Every irrelevant chunk wastes tokens and distracts (Day 7's "lost in the
+  `relevant_in_topk / k`. Every irrelevant chunk wastes tokens and distracts (Chapter 4's "lost in the
   middle").
 - **MRR (Mean Reciprocal Rank) — the position question.** A correct chunk at rank 1 beats the same at
   rank 5, and value should fall with rank. Cleanest such function: `1/rank` of the *first* correct
@@ -209,7 +209,7 @@ approximation is a known compromise.
   content. (The precision/recall split from classification, reappearing at the word level.)
 - **Embedding similarity — overlap of *meaning*.** Both above count word overlap, so "get my money
   back" and "issue a refund" — same meaning, no shared words — score ~0. Fix: embed output and
-  reference (Day 7), take **cosine similarity** — different words, same meaning now score high. But
+  reference (Chapter 4), take **cosine similarity** — different words, same meaning now score high. But
   you're trusting the embedding model's fuzzy notion of "similar."
 - **The shared, unfixable limit.** All three compare against **one reference**, but open-ended tasks
   have *many* equally-good answers. A brilliant answer phrased unlike your reference scores low; a
@@ -236,7 +236,7 @@ its own (each typically judged by an LLM, Part C):
 never can — low **context recall** → retrieval/chunking missed info (fix retrieval); good context but
 low **faithfulness** → generator invented things (fix prompt/grounding); low **answer relevance** → it
 misread the question (fix prompt/query understanding); low **context precision** → too much noise (fix
-chunking/retrieval). Day 7's "debug retrieval before generation," turned into named, trackable numbers
+chunking/retrieval). Chapter 4's "debug retrieval before generation," turned into named, trackable numbers
 — the metrics *are* the debugger.
 
 **The thread tying the catalog together.** Every metric is the same move: **name the question
@@ -262,13 +262,13 @@ makes evaluating the things you most care about (helpfulness, faithfulness, tone
   non-deterministic and biased — so it must be *engineered and validated* (concepts 16–17), never
   blindly trusted.
 
-**15. Writing a good judge prompt is prompt engineering (Day 5–6) pointed at grading.**
+**15. Writing a good judge prompt is prompt engineering (Chapter 3) pointed at grading.**
 A reliable judge needs: **a specific rubric** ("faithful = every factual claim is supported by the
 context; no invented details") and a **scale** — *prefer coarse* (binary, or 1–3) over 1–10, since
 models score far more consistently on coarse distinctions; **one dimension at a time** (faithfulness,
 relevance, completeness separately, not one fuzzy "quality"); **few-shot anchors** (show a top score
-and a low score, Day 5–6); **reasoning before the score** (CoT makes the verdict more reliable and
-auditable); and **structured output** (Day 3) so you can aggregate.
+and a low score, Chapter 3); **reasoning before the score** (CoT makes the verdict more reliable and
+auditable); and **structured output** (Chapter 2) so you can aggregate.
 ```python
 JUDGE = """You grade an AI answer for FAITHFULNESS to the provided context.
 Faithful = every factual claim is directly supported by the context; no invented details.
@@ -319,8 +319,8 @@ human ratings is a *measurement*; otherwise it's an unaudited model guessing in 
 **18. Eval-driven development: change one thing → re-run the eval → compare the number.**
 The core working loop and the payoff of Parts A–C. New prompt, different model, smaller chunks, a
 reranker, a fine-tune? **Run it against the eval set and compare scores.** "0.88 vs 0.79 faithfulness"
-is a decision you can defend; "it feels better" is not. Exactly the discipline Day 7 (chunk sizes),
-Day 9 (trajectories), and Day 11 (base-vs-tuned) kept deferring to here.
+is a decision you can defend; "it feels better" is not. Exactly the discipline Chapter 4 (chunk sizes),
+Chapter 5 (trajectories), and Chapter 6 (base-vs-tuned) kept deferring to here.
 - *Build consequence:* Every change becomes an experiment with a measured outcome. You stop arguing
   about whether a change helped and start *knowing* — and you catch the changes that quietly make
   things *worse*, the more common and dangerous case.
@@ -334,7 +334,7 @@ as a *dropped number*, not a user complaint three weeks later.
   The set becomes the institutional memory of every way your system has been wrong.
 
 **20. Version prompts and datasets together; run eval in CI.**
-Your prompt is code — version it (Day 5–6's templating/versioning). Your eval set is the test suite —
+Your prompt is code — version it (Chapter 3's templating/versioning). Your eval set is the test suite —
 version it alongside. Ideally **eval runs automatically in CI** on changes, gating merges below a
 quality bar, like unit tests.
 - *Build consequence:* "Which prompt version produced this result, and what did it score?" must always
@@ -362,10 +362,10 @@ model won't reliably self-enforce. Picture a sandwich: input guardrails → mode
   model is helpful, fallible, and manipulable, not a security boundary.
 
 **23. Input-side guardrails — check before the model sees it.**
-- **Prompt-injection defense** (recap Day 5–6): untrusted text (user input, retrieved docs, tool
+- **Prompt-injection defense** (recap Chapter 3): untrusted text (user input, retrieved docs, tool
   output) can carry instructions that hijack the model. Delimit and label untrusted content as *data,
   not instructions*; don't let it override the system prompt; be especially careful when it can drive a
-  tool call (Day 9–10).
+  tool call (Chapter 5).
 - **PII / sensitive-data handling:** detect and redact/handle personal data per policy *before* sending
   or logging it (and never log secrets — your standing rule).
 - **Abuse / moderation:** screen for disallowed or harmful requests with a **moderation classifier**
@@ -375,12 +375,12 @@ model won't reliably self-enforce. Picture a sandwich: input guardrails → mode
   a malicious user.
 
 **24. Output-side guardrails — check before the answer ships.**
-- **Structural validation** (Day 3): does it parse / match the schema? Reject or repair if not.
+- **Structural validation** (Chapter 2): does it parse / match the schema? Reject or repair if not.
 - **Groundedness / hallucination check:** for RAG, run the faithfulness judge (Part C) and block/flag
   answers unsupported by the context — your defense against confident fabrication.
 - **Unsafe-content filtering:** moderate the *output* too (a clean input can still yield disallowed
   content) and handle it before the user sees it.
-- **Refusal handling:** decide what happens when the model refuses or abstains (Day 5–6) — a graceful
+- **Refusal handling:** decide what happens when the model refuses or abstains (Chapter 3) — a graceful
   fallback, not a raw error or an empty box.
 - *Build consequence:* The output guardrail is your last line before a user or downstream service.
   Anything you'd be unwilling to show or forward must be checked *here* — it's the only place left to
@@ -403,7 +403,7 @@ fail-safe unless you've consciously chosen otherwise.
 **26. The four live metrics that actually matter — watch them continuously.**
 Once live, quality alone isn't enough; track **quality** (online eval / user signals), **latency** (p50
 *and* p95/p99 — tail latency is what users feel, and RAG/agents add steps), **cost** (per-request token
-spend — Day 3/Day 10 — trending over time), and **error & refusal rates** (API failures, timeouts, and
+spend — Chapter 2/Chapter 5 — trending over time), and **error & refusal rates** (API failures, timeouts, and
 how often the model refuses/abstains). A spike in any one is an incident signal.
 - *Build consequence:* You optimized all four in development; in production you *monitor* them, because
   real traffic shifts and any prompt/model change can move them. An unwatched cost or latency curve is a
@@ -420,9 +420,9 @@ Over time the offline set comes to mirror reality because it's *built from* real
 
 **28. Reliability is a system property — defense in depth, not a better model.**
 Pull the threads together: a reliable LLM feature is *engineered around* a fallible model. **Retries
-with backoff** for transient errors (Day 3 Part E), **fallbacks** (a smaller/alternate model, a cached
+with backoff** for transient errors (Chapter 2 Part E), **fallbacks** (a smaller/alternate model, a cached
 answer, graceful degradation when the primary fails), **timeouts and circuit breakers**, **bounds** on
-agent loops (Day 9–10), and the guardrails of Part E. No single piece makes the system reliable; the
+agent loops (Chapter 5), and the guardrails of Part E. No single piece makes the system reliable; the
 *layering* does.
 - *Build consequence:* Don't chase reliability by waiting for a better model — engineer it in with
   redundancy and graceful degradation, so that when (not if) the model misbehaves or the API hiccups,
@@ -489,7 +489,7 @@ other tells you the system is getting worse before users revolt.
 > chapter — referenced here, not re-taught. This Part is about *measuring* live quality; that one is about
 > *growing the set* from it.
 
-**Hands-on (Part G):** From your Day-15 request logs, **sample 20% of requests**. Run the Part-C faithfulness
+**Hands-on (Part G):** From your Chapter 8 request logs, **sample 20% of requests**. Run the Part-C faithfulness
 judge on each in **reference-free mode** (grade against the *retrieved context only*, no gold answer) and
 compute a **live hallucination rate** = unsupported / sampled. Separately, **wire a thumbs-down signal**
 attached to each request's trace/score (concept 29). Now pull **one thumbs-down** and walk its trace: it
@@ -522,11 +522,11 @@ different fixes:
 
 **33. The strategy — prevention levers (consolidated) and the detection methods the chapter lacked.**
 *Prevention* (levers already scattered across the course, gathered here as one strategy): **grounding/RAG**
-(Day 7 — give the model the facts), **low temperature** (Day 2 — less sampling-driven invention),
-**"answer only from the provided context" prompts** (Day 5–6), **abstention licensing** — explicitly permit
-"I don't know" so the model isn't forced to fabricate (Day 5–6, concept 30's refusal rate), **tool use** for
-ground-truth lookups (Day 9–10), and **structured output** to constrain the surface the model can invent on
-(Day 3). Read together these are a *hallucination-prevention strategy*, not six unrelated tricks.
+(Chapter 4 — give the model the facts), **low temperature** (Chapter 1 — less sampling-driven invention),
+**"answer only from the provided context" prompts** (Chapter 3), **abstention licensing** — explicitly permit
+"I don't know" so the model isn't forced to fabricate (Chapter 3, concept 30's refusal rate), **tool use** for
+ground-truth lookups (Chapter 5), and **structured output** to constrain the surface the model can invent on
+(Chapter 2). Read together these are a *hallucination-prevention strategy*, not six unrelated tricks.
 *Detection* (methods the chapter didn't yet have):
 - **Span-level claim verification** — decompose the answer into individual claims and check **each span**
   against the retrieved evidence; surface the result as **citations** (claim → supporting chunk). Modern best
@@ -575,11 +575,11 @@ answers and show whether they agree. Finish with **one sentence** on when you'd 
   worth reading even if you compute them yourself.
 - A read on **classification metrics** (precision/recall/F1, the confusion matrix) and on **LLM-judge
   biases** + judge validation.
-- Your own Day 3 (retries/structured output), Day 5–6 (injection), Day 7–8 (RAG metrics), Day 9–10
-  (trajectories), Day 11–12 (base-vs-tuned) — this section evaluates all of them.
+- Your own Chapter 2 (retries/structured output), Chapter 3 (injection), Chapter 4 (RAG metrics), Chapter 5
+  (trajectories), Chapter 6 (base-vs-tuned) — this section evaluates all of them.
 
 **Hands-on tasks**
-1. **Seed an eval set:** for your Day 7 RAG system *or* Day 9 agent, write **20 `(input, expected)`
+1. **Seed an eval set:** for your Chapter 4 RAG system *or* Chapter 5 agent, write **20 `(input, expected)`
    cases** from real/realistic use — include 3–4 edge cases and any failure you actually hit.
 2. **Compute classification metrics by hand:** take a 20-case yes/no task (e.g. "is this question
    in-scope for the docs?"), build the confusion matrix, and compute accuracy, precision, recall, F1.
@@ -677,7 +677,7 @@ answers and show whether they agree. Finish with **one sentence** on when you'd 
     satisfy a verbosity-biased judge so the score rises while helpfulness falls. Detect by reading real
     outputs, re-validating the judge vs humans, and refreshing the eval set from live traffic.
 
-**Deliverable:** a reusable **eval harness** for one of your earlier builds (Day 7 RAG or Day 9 agent):
+**Deliverable:** a reusable **eval harness** for one of your earlier builds (Chapter 4 RAG or Chapter 5 agent):
 a ≥20-case `(input, expected)` dataset (including past failures); **at least one
 deterministic/quantitative metric computed correctly** (a classification metric *or* hit-rate@k/MRR,
 shown with the arithmetic) **and one validated LLM-as-judge** (with its rubric and your human-agreement
@@ -685,10 +685,10 @@ check); run against **two versions** of the system to show a measured before/aft
 defended ship/no-ship call. **Plus** one safety guardrail (input or output) with a case it catches.
 Include a one-paragraph note on how your judge agreed with your own grading on the 10-case check.
 
-**Daily update (DM to Ayush):** one line — what you measured and any blocker (e.g. "eval harness on the
+**Daily update:** one line — what you measured and any blocker (e.g. "eval harness on the
 RAG bot: 24 cases; hit-rate@4 0.79→0.88 after re-chunking, MRR 0.61→0.74; faithfulness judge at 90%
 agreement with my labels; added a groundedness output guardrail").
 
-**Time:** ~2 days. Day 13: Parts A–C (eval set, the metrics catalog with hand-computed examples, build
-+ validate a judge). Day 14: Parts D–F (regression/iteration loop, input+output guardrails, production
+**Time:** ~2 sessions. Session 1: Parts A–C (eval set, the metrics catalog with hand-computed examples, build
++ validate a judge). Session 2: Parts D–F (regression/iteration loop, input+output guardrails, production
 reliability) and the harness deliverable.

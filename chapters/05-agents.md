@@ -1,4 +1,4 @@
-## Day 9–10 — Agents & Tool Use: from single call to autonomous loop
+## Chapter 5 — Agents & Tool Use: from single call to autonomous loop
 
 **Goal:** Build an **agent** — a model running in a *loop* that chooses tools, acts, observes the
 results, and decides its own next step until a task is done. By the end you can build a multi-tool
@@ -13,13 +13,13 @@ explode: a single bad call is one wrong answer; a bad *loop* is twenty wrong cal
 and an action taken in the real world you can't undo. The skill on this day is building agents that
 are *reliable and bounded*, not just impressive in a demo.
 
-> **Setup assumed:** same as Day 3, plus your Day 7–8 `retrieve()` function — we'll wrap it as a
+> **Setup assumed:** same as Chapter 2, plus your Chapter 4 `retrieve()` function — we'll wrap it as a
 > *tool* the agent can call. From-scratch only: we build the loop in plain Python with the SDKs so
 > you can see exactly what every framework is doing under the hood. Frameworks (LangGraph, OpenAI
 > Agents SDK, Claude Agent SDK) are named as pointers at the end, not taught.
 
-**Suggested split:** Day 9 = Parts A–C (what an agent is, the loop from scratch, designing tools —
-build a working single-tool then multi-tool agent). Day 10 = Parts D–F (memory/context, planning
+**Suggested split:** Session 1 = Parts A–C (what an agent is, the loop from scratch, designing tools —
+build a working single-tool then multi-tool agent); Session 2 = Parts D–F (memory/context, planning
 patterns, production reality — make it robust, bounded, and observable).
 
 ---
@@ -32,10 +32,10 @@ The whole idea fits in five steps the model repeats on its own:
 The model never executes anything itself — on each turn it *requests* a tool call ("search the docs
 for X"), **your code runs it** and feeds the result back, and the model uses that to decide its next
 move. The loop ends when the model decides it's done (it answers instead of calling a tool) or you
-cut it off (a limit). That "decide its own next step" is the entire difference from Day 3: there,
+cut it off (a limit). That "decide its own next step" is the entire difference from Chapter 2: there,
 *you* wrote the sequence of calls; here, *the model* chooses the sequence at runtime.
 - *Build consequence:* An agent is mostly a `while` loop around the tool-calling you already learned
-  on Day 3. There's no magic — once you see the loop, every agent product is a variation on it.
+  in Chapter 2. There's no magic — once you see the loop, every agent product is a variation on it.
 
 **2. Agent vs. workflow vs. single call — the real distinction is *who decides the control flow*.**
 - **Single call:** one prompt, one answer. *You* did all the thinking about steps. (Most tasks.)
@@ -65,13 +65,13 @@ cut it off (a limit). That "decide its own next step" is the entire difference f
 ## Part B — The agent loop, built from scratch
 
 **4. Tool calling, recapped — now in a loop instead of one-shot.**
-Day 3 Part D taught the 5-step round trip: you declare tools → the model requests one → your code
+Chapter 2 Part D taught the 5-step round trip: you declare tools → the model requests one → your code
 runs it → you return the result → the model uses it. That was *one* round trip. An agent just
 **keeps doing round trips until the model stops requesting tools.** The model's signal is the
 stop/finish reason: if it returned a tool-use request, run the tool and loop; if it returned a
 normal text answer, you're done.
-- *Build consequence:* If Day 3's tool calling is solid, the agent loop is a small step. If it's
-  shaky, go re-do Day 3 Part D first — the loop multiplies every weakness in your tool handling.
+- *Build consequence:* If Chapter 2's tool calling is solid, the agent loop is a small step. If it's
+  shaky, go re-do Chapter 2 Part D first — the loop multiplies every weakness in your tool handling.
 
 **5. The control loop in code — this is the whole engine.**
 ```python
@@ -107,16 +107,16 @@ The three things that *are* the agent: the **toolbox** (`tools`), the **stop con
 > `resp.choices[0].message.tool_calls`, you append a
 > `{"role":"tool", "tool_call_id":..., "content":...}` message per result, and the stop signal is
 > `finish_reason == "tool_calls"`. The *shape* of the loop is identical — only the field names
-> differ (the same Day 3 Part A/D differences).
+> differ (the same Chapter 2 Part A/D differences).
 
 - *Build consequence:* Notice the context grows every iteration (you append the assistant turn *and*
-  the tool results). That growth is the source of Day 10's cost and "lost the plot" problems — keep
+  the tool results). That growth is the source of Session 2's cost and "lost the plot" problems — keep
   it in view from the first loop you write.
 
 **6. Multi-tool: give the model a toolbox and let it choose.**
 A real agent has several tools and decides *which* to use (and in what order) per step. You pass a
 list of tool declarations; the model picks. For our deliverable, the toolbox is: your **`retrieve()`
-from Day 7–8** (search the docs), a **calculator** (models are unreliable at arithmetic — give them
+from Chapter 4** (search the docs), a **calculator** (models are unreliable at arithmetic — give them
 a real one), and optionally a **web/lookup** tool. The model might search the docs, do a calculation
 on what it found, then answer — choosing that sequence itself.
 - *Build consequence:* The model's tool *choice* is only as good as your tool *descriptions* — which
@@ -128,7 +128,7 @@ on what it found, then answer — choosing that sequence itself.
 
 **7. A tool is an API *written for the model* — its description is prompt engineering.**
 The model decides whether and how to call a tool **entirely from the tool's name, description, and
-parameter schema.** It can't read your implementation. So those fields *are* a prompt, and Day 5–6
+parameter schema.** It can't read your implementation. So those fields *are* a prompt, and Chapter 3
 rules apply: be specific, say what it does, when to use it, when *not* to, and document every
 parameter. `search_docs(query: str) — "Search the internal knowledge base for relevant passages.
 Use for any factual question about company policy. Returns the top passages with sources."` beats
@@ -164,8 +164,8 @@ retry. Let the exception bubble up and the whole loop dies.
 
 **10. Context grows every single step — and that's your main enemy in a long loop.**
 Each iteration appends the model's turn *and* the tool result to `messages`, and you resend the
-whole thing next step (Day 3's statelessness, now compounding). A 15-step agent can be resending
-tens of thousands of tokens by the end. Two consequences, both from Day 2/Day 3: **cost climbs
+whole thing next step (Chapter 2's statelessness, now compounding). A 15-step agent can be resending
+tens of thousands of tokens by the end. Two consequences, both from Chapter 1/Chapter 2: **cost climbs
 super-linearly** across a run, and eventually you **approach the context-window ceiling** and must
 trim.
 - *Build consequence:* Cost and latency for an agent scale with *steps × growing-context*, not with
@@ -176,7 +176,7 @@ trim.
 - **Short-term (working memory):** the `messages` list itself — the running transcript of this task.
   It *is* the agent's scratchpad; it's how it "remembers" what it already tried two steps ago.
 - **Long-term memory:** anything that must persist *across* runs or outlive the window — past
-  conversations, learned facts, user preferences. The standard implementation is… RAG (Day 7–8):
+  conversations, learned facts, user preferences. The standard implementation is… RAG (Chapter 4):
   write memories to a store, retrieve the relevant ones into context when needed. *Long-term agent
   memory is just retrieval pointed at the agent's own history.*
 - *Build consequence:* You don't get memory for free — short-term is the message list *you* manage,
@@ -186,7 +186,7 @@ trim.
 **12. Compaction: summarize old steps so a long loop doesn't drown.**
 When the transcript grows large, replace the oldest steps with a summary — "so far: searched docs
 for X, found Y, computed Z" — keeping recent turns verbatim. This caps context growth and, as a
-bonus, *refocuses* the model on what matters. It's the agent version of Day 3's "trim or summarize
+bonus, *refocuses* the model on what matters. It's the agent version of Chapter 2's "trim or summarize
 older turns."
 - *Build consequence:* For any agent that runs more than a handful of steps, plan for compaction from
   the start. Without it, long tasks get more expensive *and* less accurate as they go — exactly the
@@ -275,7 +275,7 @@ Everything so far had *you* own the loop: your `while`, your `messages` list, yo
 tracing. A managed agent runtime is the cloud running that exact loop **server-side** — you supply
 the model, the tools, and (optionally) a knowledge base, and the provider executes think→act→observe
 on its own infrastructure. You give up control of the loop in exchange for not operating it. This
-Part is about *that trade* and how the **invocation** differs from the Day-9 hand-built loop. (The
+Part is about *that trade* and how the **invocation** differs from the Session 1 hand-built loop. (The
 broader platform/pricing/region picture lives in the Cloud Managed-GenAI Platforms extension
 chapter; here we stay on the agent *runtime* decision.)
 
@@ -294,7 +294,7 @@ from Part B; what you're really choosing is **who operates it**.
 **20. AWS Bedrock Agents — the loop runs server-side behind one call.**
 You configure an agent from three declared pieces: a **foundation model**, **action groups** (your
 tools, backed by a Lambda or an OpenAPI/API endpoint — the managed equivalent of concept 6's
-toolbox), and a **Knowledge Base** (managed RAG over your data — Day 7–8's `retrieve()`, run by AWS).
+toolbox), and a **Knowledge Base** (managed RAG over your data — Chapter 4's `retrieve()`, run by AWS).
 AWS then executes the *entire* reason-act tool loop for you: the model picks an action group, Bedrock
 invokes your Lambda, feeds the result back, queries the Knowledge Base when needed, and loops until
 done. Your code shrinks to **one `InvokeAgent` call** — no `while`, no `messages` bookkeeping, no
@@ -328,7 +328,7 @@ can **swap the model without rebuilding the agent** — cheaper model for routin
 one where it matters. That's *model choice per use case* expressed as configuration, not code.
 - *Build consequence:* Copilot Studio trades the most control for the least code — right for
   business/internal agents and fast iteration, wrong when you need step-level control of the loop.
-  BYOM means your Day-3 "pick the model per task" decision becomes a per-prompt setting you can change
+  BYOM means your Chapter 2 "pick the model per task" decision becomes a per-prompt setting you can change
   without touching the agent's wiring.
 
 **23. The runtime tradeoff axis — managed vs. your own loop.**
@@ -339,7 +339,7 @@ Same axis that runs through this whole day, applied to *who owns the loop*:
   stop logic, and trajectory.
 - **Your own loop (Part B):** total control and portability across providers; you operate everything —
   bounds, tracing, memory, auth — yourself.
-- **Invocation difference:** the Day-9 loop is *your process* running many model calls and tool
+- **Invocation difference:** the Session 1 loop is *your process* running many model calls and tool
   executions locally; a managed runtime is a **single remote call** (`InvokeAgent` / a deployed Agent
   Engine endpoint / a Copilot Studio invocation) where the provider runs the steps and returns the
   result — your `while`, `stop_reason`, and tool execution all happen on their side.
@@ -360,11 +360,11 @@ Same axis that runs through this whole day, applied to *who owns the loop*:
   picture for all three clouds (this Part covers only the agent-*runtime* decision).
 - OpenAI — function-calling guide and the Agents SDK overview (read for the loop concepts; we build
   raw).
-- Your own Day 3 (Part D, tool calling) and Day 7–8 (`retrieve()`) — direct prerequisites; the
+- Your own Chapter 2 (Part D, tool calling) and Chapter 4 (`retrieve()`) — direct prerequisites; the
   deliverable reuses both.
 
 **Hands-on tasks**
-1. **One-tool loop:** wrap your Day 7–8 `retrieve()` as a `search_docs` tool and put it in the Part B
+1. **One-tool loop:** wrap your Chapter 4 `retrieve()` as a `search_docs` tool and put it in the Part B
    loop. Ask a question that needs one search; print the messages list after each step and watch the
    loop run, then stop.
 2. **Watch it stop:** add a `print(step, resp.stop_reason)` each iteration. Confirm exactly when
@@ -384,7 +384,7 @@ Same axis that runs through this whole day, applied to *who owns the loop*:
    Compare total tokens with and without.
 9. *(Stretch)* **Managed runtime, same agent:** re-implement your hand-built agent as a **Bedrock
    Agent** (or **Vertex Agent Engine**): define *one* tool (an action group / tool wrapping your
-   `search_docs`) and a **Knowledge Base** over the Day 7–8 corpus, then invoke it with a single
+   `search_docs`) and a **Knowledge Base** over the Chapter 4 corpus, then invoke it with a single
    `InvokeAgent` (or deployed-endpoint) call on the same question. Measure three things against the
    Part B loop: **lines of code** (yours vs. the managed config + one call), **latency** (your local
    multi-call loop vs. the single remote call), and **flexibility** (what step-level control you lose).
@@ -431,7 +431,7 @@ Same axis that runs through this whole day, applied to *who owns the loop*:
 4. Each step appends the assistant turn + tool result and the whole list is resent. Problems: cost
    climbs super-linearly across the run, and you approach the context-window ceiling.
 5. The model decides whether/how to call a tool *solely* from its name/description/schema — it can't
-   see your code — so those fields function exactly like a prompt and follow Day 5–6 rules.
+   see your code — so those fields function exactly like a prompt and follow Chapter 3 rules.
 6. Short-term = the running `messages` transcript for this task (the scratchpad); long-term =
    persistence across runs, usually implemented as RAG over the agent's own history/facts.
 7. A hard step limit (`max_steps`), a token/cost budget with abort, and loop/repeat detection.
@@ -459,17 +459,17 @@ Same axis that runs through this whole day, applied to *who owns the loop*:
     where steps depend on what's found.
 
 **Deliverable:** a working **multi-tool RAG research agent**, built from scratch (no framework): the
-Day 7–8 `retrieve()` wrapped as `search_docs`, plus a `calculate` tool, running in a bounded loop
+Chapter 4 `retrieve()` wrapped as `search_docs`, plus a `calculate` tool, running in a bounded loop
 (`max_steps` + token budget). It must (a) choose tools itself and answer a question needing both
 search and calculation, (b) recover from a tool error instead of crashing, (c) stop cleanly at the
 limit, and (d) emit a full step trace. Include a short writeup: for one run, *when and why* did the
 agent decide to stop?
 
-**Daily update (DM to Ayush):** one line — what you built/learned and any blocker (e.g. "multi-tool
+**Daily update:** one line — what you built/learned and any blocker (e.g. "multi-tool
 agent works: searches docs then calculates, recovers from empty-result errors, capped at 8 steps;
 trace logging in").
 
-**Time:** ~2 days. Day 9: Parts A–C (loop + tool design, get a multi-tool agent running). Day 10:
+**Time:** ~2 sessions. Session 1: Parts A–C (loop + tool design, get a multi-tool agent running). Session 2:
 Parts D–F (memory/compaction, planning patterns, bounds/guardrails/tracing).
 
 ---

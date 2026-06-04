@@ -1,7 +1,7 @@
 # AI Training Plan
 
 A top-down program for the team to learn modern AI / LLMs — start from the big picture,
-then go deeper section by section. Daily updates go to Ayush via Slack DM (a one-liner is fine).
+then go deeper section by section. Each chapter ends with a short daily update (a one-liner is fine).
 
 ## Who this is for
 
@@ -10,41 +10,40 @@ use models via APIs — **not** to build or train LLMs themselves.
 
 That sets the depth: internals (pretraining, the Transformer, reinforcement learning) are
 covered only deep enough to make good engineering decisions. We never train a model. The real
-depth of this program is in sections 2–9 (prompting, APIs, RAG, agents, adaptation, evaluation,
+depth of this program is in chapters 2–8 (APIs, prompting, RAG, agents, adaptation, evaluation,
 deployment). Every Foundation topic is taught through one lens: **"how does this change
 something I'd build?"**
 
 ## Course spine
 
-| # | Section | Day-block | Chapter |
-|---|---------|-----------|---------|
-| 1 | Foundations — How LLMs Actually Work | Day 1–2 | [01 — Foundations](chapters/01-day-1-2-foundations.md) |
-| 2 | Using LLMs Well — Prompting & Interaction | Day 5–6 | [03 — Prompt Engineering](chapters/03-day-5-6-prompt-engineering.md) |
-| 3 | Building with LLMs — APIs & Integration | Day 3–4 | [02 — APIs & Integration](chapters/02-day-3-4-apis-and-integration.md) |
-| 4 | Grounding LLMs — RAG & Context | Day 7–8 | [04 — RAG](chapters/04-day-7-8-rag.md) |
-| 5 | Agents & Tool Use | Day 9–10 | [05 — Agents](chapters/05-day-9-10-agents.md) |
-| 6 | Customization — Fine-tuning & Adaptation | Day 11–12 | [06 — Customization](chapters/06-day-11-12-customization.md) |
-| 7 | Evaluation, Safety & Reliability | Day 13–14 | [07 — Evaluation](chapters/07-day-13-14-evaluation.md) |
-| 8 | Deployment & Production | Day 15–16 | [08 — Deployment](chapters/08-day-15-16-deployment.md) |
-| 9 | Capstone Project | Day 17+ | _to be planned_ |
+Chapters are numbered in reading order — work straight through 1 → 8, then the Capstone.
+APIs come early (Chapter 2) so there's something concrete to prompt against in Chapter 3.
 
-> The spine is ordered by topic; the day-blocks run in teaching order (APIs come early, on
-> Day 3–4, so there's something concrete to prompt against). Read the chapters in day order:
-> 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08.
+| # | Chapter | Focus |
+|---|---------|-------|
+| 1 | [Foundations — How LLMs Actually Work](chapters/01-foundations.md) | the mental model: tokens, the Transformer, context, sampling |
+| 2 | [Talking to an LLM — APIs & Integration](chapters/02-apis-and-integration.md) | first call → structured output, tool calling, error handling |
+| 3 | [Prompt Engineering](chapters/03-prompt-engineering.md) | reliable behavior on demand |
+| 4 | [Grounding LLMs — RAG & Context](chapters/04-rag.md) | answer from your data, with citations |
+| 5 | [Agents & Tool Use](chapters/05-agents.md) | the model in a loop, choosing and running tools |
+| 6 | [Customization — Fine-tuning & Adaptation](chapters/06-customization.md) | the adaptation ladder; pick the right rung |
+| 7 | [Evaluation, Safety & Reliability](chapters/07-evaluation.md) | shipping with confidence, not vibes |
+| 8 | [Deployment & Production](chapters/08-deployment.md) | run an LLM feature for real |
+| 9 | Capstone Project | _to be planned_ |
 
 ## Chapters
 
-1. [Day 1–2 — Foundations: how LLMs actually work](chapters/01-day-1-2-foundations.md)
-2. [Day 3–4 — Talking to an LLM: from first call to production-ready](chapters/02-day-3-4-apis-and-integration.md)
-3. [Day 5–6 — Prompt Engineering: reliable behavior on demand](chapters/03-day-5-6-prompt-engineering.md)
-4. [Day 7–8 — Grounding LLMs: RAG & Context](chapters/04-day-7-8-rag.md)
-5. [Day 9–10 — Agents & Tool Use: from single call to autonomous loop](chapters/05-day-9-10-agents.md)
-6. [Day 11–12 — Customization: adapting a model without training one](chapters/06-day-11-12-customization.md)
-7. [Day 13–14 — Evaluation, Safety & Reliability: shipping with confidence](chapters/07-day-13-14-evaluation.md)
-8. [Day 15–16 — Deployment & Production: running an LLM feature for real](chapters/08-day-15-16-deployment.md)
-9. Day 17+ — Capstone Project _(to be planned)_
+1. [Foundations: how LLMs actually work](chapters/01-foundations.md)
+2. [Talking to an LLM: from first call to production-ready](chapters/02-apis-and-integration.md)
+3. [Prompt Engineering: reliable behavior on demand](chapters/03-prompt-engineering.md)
+4. [Grounding LLMs: RAG & Context](chapters/04-rag.md)
+5. [Agents & Tool Use: from single call to autonomous loop](chapters/05-agents.md)
+6. [Customization: adapting a model without training one](chapters/06-customization.md)
+7. [Evaluation, Safety & Reliability: shipping with confidence](chapters/07-evaluation.md)
+8. [Deployment & Production: running an LLM feature for real](chapters/08-deployment.md)
+9. Capstone Project _(to be planned)_
 
-### Advanced & Production Track (Day 17+)
+### Advanced & Production Track
 
 Extension chapters that close known gaps for engineers shipping real LLM features,
 drafted alongside the Capstone (the rest of the track is backlogged in _Gaps & roadmap_ below):
@@ -54,22 +53,22 @@ drafted alongside the Capstone (the rest of the track is backlogged in _Gaps & r
 
 ## How each chapter is built
 
-Every day-block follows the same shape so the team always knows where to look:
+Every chapter follows the same shape so the team always knows where to look:
 
 - **Goal** → **Why it matters** → a **setup-assumed** note
-- **Suggested split** across the two days
+- **Suggested split** across two working sessions
 - **Parts** (numbered concepts) — each concept ends with a *Build consequence:* line tying it
   back to something you'd actually build
 - Side-by-side **Anthropic / OpenAI** Python where code applies
 - **Resources** → **Hands-on tasks** → **Questions** (Check understanding / Apply it / Stretch)
-  → **Answer key** → **Deliverable** → **Daily update (DM to Ayush)** → **Time estimate**
+  → **Answer key** → **Deliverable** → **Daily update** → **Time estimate**
 
 ## Gaps & roadmap (planned additions)
 
-The core spine (sections 1–8) is built. These additions close known gaps for engineers
+The core spine (chapters 1–8) is built. These additions close known gaps for engineers
 **shipping** real LLM features. To avoid renumbering the live course, they land two ways:
 **grafts** (new Parts inside existing chapters — purely additive) and **extension
-chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
+chapters** (the "Advanced & Production Track," alongside the Capstone).
 
 > **v1 (current cohort):** append as below. **v2 (next cohort):** interleave at the
 > *ideal slot* so security follows RAG/agents and governance precedes deployment.
@@ -78,7 +77,7 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 > grafts derived from a review of ~3,000 real Gen-AI interview questions. Frameworks/libraries
 > (LangChain, LlamaIndex, …) are intentionally deferred. The rest (marked ⬜) is still planned.
 
-### New chapters — Advanced & Production Track (Day 17+)
+### New chapters — Advanced & Production Track
 
 | Topic | Scope | v2 ideal slot |
 |-------|-------|---------------|

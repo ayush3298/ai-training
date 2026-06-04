@@ -1,4 +1,4 @@
-## Day 7–8 — Grounding LLMs: RAG & Context
+## Chapter 4 — Grounding LLMs: RAG & Context
 
 **Goal:** Make the model answer from *your* data — internal docs, a knowledge base, a user's
 files — instead of only from what it memorized in pretraining. By the end you can build a
@@ -6,7 +6,7 @@ retrieval pipeline end to end: turn documents into searchable vectors, find the 
 a question, feed them to the model, and get an answer that **cites its sources and refuses when
 the answer isn't in the data**.
 
-**Why this matters:** Day 2 taught the single most important limit of an LLM: it only knows two
+**Why this matters:** Chapter 1 taught the single most important limit of an LLM: it only knows two
 things — what's baked into its weights (frozen at training time, no knowledge of your company,
 often months stale) and what's in the context window right now. RAG
 (**Retrieval-Augmented Generation**) is the discipline of putting *the right information into the
@@ -16,13 +16,13 @@ corpus the model never saw. It's also the cheapest, fastest, and lowest-risk way
 new knowledge: no training, no fine-tuning, updates the instant you add a document. If you only
 learn one "building on top of LLMs" skill beyond prompting, it's this one.
 
-> **Setup assumed:** same as Day 3 — an API key in your environment and the SDK installed. New
-> this block: an embeddings model (same provider, e.g. `voyage` / `text-embedding-3-small`) and a
+> **Setup assumed:** same as Chapter 2 — an API key in your environment and the SDK installed. New
+> this chapter: an embeddings model (same provider, e.g. `voyage` / `text-embedding-3-small`) and a
 > vector store. We'll start with a 30-line in-memory store you write yourself (so the mechanism is
 > never a black box), then name the real databases you'd use in production.
 
-**Suggested split:** Day 7 = Parts A–C (the problem, embeddings, the retrieval pipeline — build
-the "retrieve" half). Day 8 = Parts D–F (generation, making retrieval good, when *not* to use
+**Suggested split:** Session 1 = Parts A–C (the problem, embeddings, the retrieval pipeline — build
+the "retrieve" half); Session 2 = Parts D–F (generation, making retrieval good, when *not* to use
 RAG — build the "generate" half and learn to evaluate it).
 
 ---
@@ -35,7 +35,7 @@ Three separate problems, one root cause — the weights are fixed after training
 - **Ignorant of your world:** it never saw your wiki, your tickets, your codebase, this user's
   documents. No amount of prompting reveals knowledge it doesn't have.
 - **Unverifiable:** even when it *is* right, it can't point you to *where* it knows that from. And
-  when it's wrong, it's wrong with total confidence (Day 2's "hallucination is the default
+  when it's wrong, it's wrong with total confidence (Chapter 1's "hallucination is the default
   behavior").
 - *Build consequence:* For any question whose answer lives in *your* data, a bare model call is
   the wrong tool. You don't need a smarter model — you need to *put the answer in front of it*.
@@ -44,7 +44,7 @@ Three separate problems, one root cause — the weights are fixed after training
 The instinct is right: context memory beats parametric memory, so put the docs in context. The
 problem is volume. Your knowledge base is 10,000 documents; the context window holds maybe a few
 hundred pages. You can't paste it all, and even if you could:
-- **It's expensive** — you pay per input token on every call (Day 3's cost math), so stuffing
+- **It's expensive** — you pay per input token on every call (Chapter 2's cost math), so stuffing
   200k tokens into every request is ruinous.
 - **It's slower** and accuracy actually *drops* — models attend worse to information buried in a
   huge context ("lost in the middle"). More context is not more better.
@@ -60,7 +60,7 @@ Two halves, and you build them separately:
 - **Retrieval** (the search engine): given a question, return the top-k most relevant chunks of
   your corpus. This is the hard, unglamorous 80% of the work.
 - **Generation** (the model call): given the question + those chunks, write a grounded answer that
-  cites them. This is mostly prompt engineering — which you already know from Day 5–6.
+  cites them. This is mostly prompt engineering — which you already know from Chapter 3.
 - *Build consequence:* When a RAG system gives a bad answer, **the bug is almost always in
   retrieval, not generation.** If you handed the model the wrong paragraphs, no prompt can save
   it. Debug retrieval first, always.
@@ -312,8 +312,8 @@ def retrieve(question, k=4):
 
 **11. The grounded-answer prompt: give the model the chunks, and pin it to them.**
 Now you assemble the prompt: a system instruction that says *answer only from the provided
-context*, the retrieved chunks (clearly delimited — Day 5–6), and the question. This is where
-Day 5–6 pays off: delimiters, abstain-licensing, and format control are exactly the tools you
+context*, the retrieved chunks (clearly delimited — Chapter 3), and the question. This is where
+Chapter 3 pays off: delimiters, abstain-licensing, and format control are exactly the tools you
 need.
 ```python
 SYSTEM = (
@@ -413,7 +413,7 @@ question).
   Fine-tuning teaches it *behavior/format/style* ("always respond in this house tone/JSON shape").
   They solve different problems and often combine. Full treatment in Section 6.
 - **Agents/tools instead of RAG:** if the answer needs a *live* or *computed* value (today's order
-  status, a SQL aggregate, current price), you want a tool call (Day 3 Part D, Section 5), not a
+  status, a SQL aggregate, current price), you want a tool call (Chapter 2 Part D, Section 5), not a
   document search.
 - *Build consequence:* The senior skill is matching the tool to the need: *static knowledge in a
   corpus* → RAG; *fits in the window* → just paste it; *behavior/style* → fine-tune;
@@ -632,7 +632,7 @@ content in RAG": you can't *physically* separate them in the token stream, so yo
   (concept 11) from the start; retrofitting trust boundaries after a leak is far more painful.
 
 > **Cross-reference:** the architectural defenses (dual-LLM / CaMeL patterns) live in the
-> *Security, Privacy & Governance* chapter, and tool-output safety in the Day-3/Section-5 tool-use
+> *Security, Privacy & Governance* chapter, and tool-output safety in the Chapter-2/Section-5 tool-use
 > material. Keep the deep treatment there — this Part just establishes that *retrieved text is
 > untrusted*.
 
@@ -640,7 +640,7 @@ content in RAG": you can't *physically* separate them in the token stream, so yo
 
 ## Part J — Managed RAG pipelines (cloud-native)
 
-**33. Each cloud ships the Day 7–8 pipeline as a managed service.** Everything you hand-built in
+**33. Each cloud ships the Chapter 4 pipeline as a managed service.** Everything you hand-built in
 Parts B–E — chunk, embed, index, retrieve, generate — is available as a turnkey product:
 - **AWS Bedrock Knowledge Bases** — point it at **S3**, it **auto-chunks, embeds, and indexes**, and
   `RetrieveAndGenerate` does retrieval + grounded generation in one call; optional **Guardrails**
@@ -704,7 +704,7 @@ Parts B–E — chunk, embed, index, retrieve, generate — is available as a tu
    the scanned page**. Score **5 known fields** for extraction accuracy. Finally **swap one
    extractor** (vision-LLM page-as-image → JSON, or AWS Textract) and compare field accuracy +
    latency/cost in **one sentence**.
-9. **Embedding-model bake-off (Part H):** re-index the Day-7 corpus with **two embedding models**
+9. **Embedding-model bake-off (Part H):** re-index the Session-1 corpus with **two embedding models**
    (e.g. `text-embedding-3-small` vs an open BGE/E5 model), run the chapter's mini-eval, report
    **hit-rate@4 for each**, and pick a winner **with the number**.
 10. **Rerank (Part H):** retrieve **top-20 by cosine**, then **rerank to top-4** with a hosted or
@@ -716,9 +716,9 @@ Parts B–E — chunk, embed, index, retrieve, generate — is available as a tu
     LEAKED`. Show the **naive RAG prompt obeys it**. Then **defend** by spotlighting/labelling the
     retrieved chunks (and, optionally, an injection check) and **confirm system-prompt authority
     holds** (the model answers the real question, ignoring the planted instruction).
-13. *(Stretch)* **Managed RAG (Part J):** stand up the Day-7 corpus as a **managed RAG** (Bedrock
+13. *(Stretch)* **Managed RAG (Part J):** stand up the Session-1 corpus as a **managed RAG** (Bedrock
     Knowledge Bases **or** Vertex AI RAG Engine **or** Azure AI Search), ask the **same eval
-    questions**, and compare **answer quality + setup effort** against the hand-built Day-7 pipeline.
+    questions**, and compare **answer quality + setup effort** against the hand-built Session-1 pipeline.
 
 **Questions**
 
@@ -792,11 +792,11 @@ Parts B–E — chunk, embed, index, retrieve, generate — is available as a tu
 `answer()` with citations and abstention, plus a 10-pair mini-eval reporting hit-rate@4 for two
 chunk sizes. It must correctly abstain on an out-of-corpus question.
 
-**Daily update (DM to Ayush):** one line — what you built/learned and any blocker (e.g. "RAG over
+**Daily update:** one line — what you built/learned and any blocker (e.g. "RAG over
 the team wiki working; abstention holds on out-of-scope Qs; hit-rate@4 = 0.8 at 300-token
 chunks").
 
-**Time:** ~2 days. Day 7: Parts A–C (build the retrieve half). Day 8: Parts D–F (generation,
+**Time:** two sessions. Session 1: Parts A–C (build the retrieve half). Session 2: Parts D–F (generation,
 quality techniques, evaluation, tool-selection judgment).
 
 ---

@@ -1,4 +1,6 @@
-## Day 1 — Watch the foundation video
+## Chapter 1 — Foundations: How LLMs Actually Work
+
+### Session 1 — Watch the foundation video
 
 **Goal:** Get the full mental model of how LLMs work, end to end. Exposure, not mastery —
 we go back and deepen each section on later days.
@@ -26,26 +28,26 @@ we go back and deepen each section on later days.
 **Deliverable:** None to produce. Optional: jot down "things I didn't get" — it makes the
 deeper days easier.
 
-**Daily update to send Ayush (DM):** where you got to — e.g. "Watched it" or
+**Daily update:** where you got to — e.g. "Watched it" or
 "got to ~2hr, finishing tomorrow."
 
 ---
 
-## Day 2 — The Builder's Mental Model of an LLM
+### Session 2 — The Builder's Mental Model of an LLM
 
-**Goal:** Turn Day 1's exposure into a precise, working mental model — the handful of ideas
+**Goal:** Turn Session 1's exposure into a precise, working mental model — the handful of ideas
 that actually change how you design and debug an app built on an LLM. By the end you should be
 able to explain, to a teammate, *why* an LLM behaves the way it does and what that forces you
 to do as a builder.
 
-**Why this day matters:** Most bugs and bad design choices in LLM apps come from a wrong mental
+**Why this session matters:** Most bugs and bad design choices in LLM apps come from a wrong mental
 model — treating the model like a database, a deterministic function, or a person that "knows"
 things. Get these six ideas right and most of the later material (prompting, RAG, evals, cost
 control) becomes obvious instead of mysterious.
 
 ---
 
-### Core concepts
+#### Core concepts
 
 **1. An LLM is a next-token predictor over tokens.**
 The model takes a sequence of tokens and outputs a probability distribution over the next
@@ -301,7 +303,7 @@ and training any encoder yourself. You call hosted encoders; you don't make them
 
 ---
 
-### Resources (beyond the video)
+#### Resources (beyond the video)
 - Re-watch with a builder's eye: segments **1.1–1.6 (0:00–59:28)** and the **hallucination /
   working-memory** part of 1.8 **(1:20:33–1:41:00)**. For each idea, pause and ask: "what does
   this force me to do when I build?"
@@ -312,7 +314,7 @@ and training any encoder yourself. You call hosted encoders; you don't make them
 
 ---
 
-### Hands-on (free web UIs, no API keys needed)
+#### Hands-on (free web UIs, no API keys needed)
 
 **A. Tokens are not words.**
 1. Open tiktokenizer. Paste each and record the token count: an English sentence · a code
@@ -351,7 +353,7 @@ and training any encoder yourself. You call hosted encoders; you don't make them
 
 ---
 
-### Questions
+#### Questions
 
 **Check your understanding (answer in a sentence each):**
 1. In one line, what is an LLM actually doing when it "answers" you?
@@ -421,7 +423,7 @@ studying model behavior, or specialized fine-tuning/research workflows.
 building on it."* Each bullet = one concept + its practical implication. Attach your answers to
 questions 1–17.
 
-**Daily update (DM to Ayush):** one-liner — done / where you stopped / any blockers.
+**Daily update:** one-liner — done / where you stopped / any blockers.
 
 **Time:** ~2–3 hours (watching + hands-on + questions).
 
