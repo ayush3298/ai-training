@@ -10,7 +10,7 @@ we go back and deepen each section on later days.
 - **Link:** https://www.youtube.com/watch?v=7xTGNNLPyMI
 - **Length:** ~3.5 hours (a full day's commitment; one pass is fine)
 
-**What the video covers** (this is the spine of Section 1, Foundations):
+**What the video covers** (this is the spine of this chapter (Foundations)):
 
 | # | Sub-topic | Video segment |
 |---|-----------|---------------|
@@ -162,7 +162,7 @@ toward, never something you assume.
 *Build consequences (with examples).*
   - **Testing:** A test like `assert reply == "Your order #123 has shipped."` will flake. Test
     the *shape* instead: does it contain the order number? is it valid JSON with the right
-    keys? does an LLM-judge rate it as correct? (We cover this properly in Section 7, Eval.)
+    keys? does an LLM-judge rate it as correct? (We cover this properly in [Chapter 7](07-evaluation.md).)
   - **Caching:** If you cache by exact prompt string, tiny differences ("Hello " vs "hello")
     miss the cache. Normalize keys (trim, lowercase) before caching.
   - **Choosing temperature by task:**
@@ -299,7 +299,7 @@ and training any encoder yourself. You call hosted encoders; you don't make them
   decoder only looks left and over-weights the most recent tokens, so its vectors are a poor
   measure of whole-text meaning — use a purpose-built embedding model instead. (c) Picking the
   right embedding model (dimensions, context, language/code coverage) is its own decision; this
-  seeds the embedding-model material in the RAG chapter (ch04).
+  seeds the embedding-model material in the RAG chapter ([Chapter 4](04-rag.md)).
 
 ---
 

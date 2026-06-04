@@ -44,7 +44,7 @@ explains everything about cost and context limits later.
 Before any prompt-engineering technique, the system prompt is where you set behavior: *"You are
 a terse support agent. Answer in two sentences or fewer. If you don't know, say you don't know.
 Never invent an order number."* One field, and it shapes tone, format, scope, and guardrails for
-every turn. We devote real time to writing these well in Section 2; today the goal is just to
+every turn. We devote real time to writing these well in [Chapter 3](03-prompt-engineering.md); today the goal is just to
 *feel* how much changing this one string changes the output.
 - *Build consequence:* When output is wrong, the system prompt is the first place you look —
   most "the model won't behave" problems are really "the instructions were vague," not "the
@@ -52,9 +52,9 @@ every turn. We devote real time to writing these well in Section 2; today the go
 
 **3. The anatomy of a request and a response.**
 A request carries a few fields you'll set constantly:
-- **model** — which model (and therefore which capability/price tier — Chapter 1, concept 5).
+- **model** — which model (and therefore which capability/price tier — [Chapter 1](01-foundations.md), concept 5).
 - **messages** — the list above.
-- **`temperature`** and optionally **`top_p`** — the sampling knobs from Chapter 1.
+- **`temperature`** and optionally **`top_p`** — the sampling knobs from [Chapter 1](01-foundations.md).
 - **`max_tokens`** — a hard cap on how many tokens the model may *generate*. Too low and your
   answer is truncated mid-sentence.
 - **`stop`** — optional strings that, if generated, end the response early.
@@ -74,7 +74,7 @@ A response carries three things worth caring about from day one:
 This is the concept people get wrong most often. **The model remembers nothing between calls.**
 Each request is processed from scratch. A chatbot appears to "remember" the conversation only
 because **your code keeps the running list of messages and resends the entire list every single
-time.** This is Chapter 1's "context = working memory" made literal: the *only* thing the model
+time.** This is [Chapter 1](01-foundations.md)'s "context = working memory" made literal: the *only* thing the model
 knows about turn 1 when it's answering turn 5 is that turn 1 is still sitting in the `messages`
 list you sent.
 
@@ -132,7 +132,7 @@ print(resp.choices[0].finish_reason)     # "stop" | "length" | ...
 | Usage field names | `input_tokens` / `output_tokens` | `prompt_tokens` / `completion_tokens` |
 
 > Model names change often — `claude-sonnet-4-6` and `gpt-4o` are just examples. Check the
-> provider's models page (you looked at it in Chapter 1) for the current id, context size, and price.
+> provider's models page (you looked at it in [Chapter 1](01-foundations.md)) for the current id, context size, and price.
 
 **Multi-turn — the one line that creates "memory":**
 ```python
@@ -282,7 +282,7 @@ The round trip has five steps (six if it loops):
 5. You call the model again with the updated list; now it has the data and writes the final
    answer.
 6. If the task needs several tools, this repeats — the model calls, you execute, you return, it
-   calls again. **That loop is exactly what an "agent" is** (Section 5), so understanding it
+   calls again. **That loop is exactly what an "agent" is** ([Chapter 5](05-agents.md)), so understanding it
    here is foundational.
 
 ```python
@@ -322,7 +322,7 @@ if msg.tool_calls:
 ```
 Anthropic uses the same five-step dance with different names: tools go in a `tools=` list, the
 model returns a `tool_use` content block, and you reply with a `tool_result` block.
-- *Build consequence:* Tools are how you *fix* every limitation from Chapter 1. Can't do math
+- *Build consequence:* Tools are how you *fix* every limitation from [Chapter 1](01-foundations.md). Can't do math
   reliably? Give it a calculator. Knowledge is stale? Give it search. Needs your data? Give it a
   database query tool. The model decides *when* to call; **you stay fully in control of what
   actually executes** — which is also where you put your safety checks.
@@ -387,7 +387,7 @@ except Exception as e:
 
 ### Hands-on
 **A. First call.** Send a system + user message; print reply, usage, and stop reason. Confirm
-usage roughly matches your Chapter 1 tiktokenizer estimate.
+usage roughly matches your [Chapter 1](01-foundations.md) tiktokenizer estimate.
 **B. System-prompt swap.** Same user question, three system prompts ("one word" / "like a
 pirate" / "as JSON `{\"answer\":...}`"). Note the control you get.
 **C. Multi-turn loop.** Build the loop; ask a turn-2 question that depends on turn 1 ("capital
@@ -454,7 +454,7 @@ Schema-enforced structured output (or JSON mode + a schema); still parse and val
 Pydantic) at the boundary. · 13. You're exceeding your rate limit; add exponential backoff +
 jitter on `429` and respect `Retry-After` (and/or request a higher limit / spread load). ·
 14. Move `system` to the top-level `system=` param, read `content[0].text`, use
-`input_tokens`/`output_tokens`. · 15. Token-based mental arithmetic is unreliable (Chapter 1); give
+`input_tokens`/`output_tokens`. · 15. Token-based mental arithmetic is unreliable ([Chapter 1](01-foundations.md)); give
 it a calculator tool (Chapter 2) and have it call that instead of computing in its head. · 16. The
 model calls tool 1 → you execute and return the result → you call the model again → it calls
 tool 2 → you execute and return → it composes the final answer; the loop repeats until it

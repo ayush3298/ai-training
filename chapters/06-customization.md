@@ -29,8 +29,8 @@ decision/measurement framework), plus the deliverable.
 **1. There's a ladder of adaptation techniques, cheapest to costliest — always climb from the
 bottom.**
 Four rungs, in the order you should *try* them:
-1. **Prompt engineering** (Chapter 3) — minutes, no data, instant iteration. Change the instructions.
-2. **RAG** (Chapter 4) — hours to days. Put the right *facts* in context at runtime.
+1. **Prompt engineering** ([Chapter 3](03-prompt-engineering.md)) — minutes, no data, instant iteration. Change the instructions.
+2. **RAG** ([Chapter 4](04-rag.md)) — hours to days. Put the right *facts* in context at runtime.
 3. **Fine-tuning** — days to weeks: collect data, train, host, version, evaluate. Change the model's
    *default behavior*.
 4. **Pretraining a foundation model** — months and millions of dollars. **You will never do this.**
@@ -53,7 +53,7 @@ This is the single most important distinction in the section, and the one people
 
 **3. Why fine-tuning is rarely the *first* answer.**
 Even when the gap is genuinely behavioral, prompting usually gets you most of the way: a sharp
-system prompt + a few good few-shot examples (Chapter 3) often matches what people *assume* requires
+system prompt + a few good few-shot examples ([Chapter 3](03-prompt-engineering.md)) often matches what people *assume* requires
 fine-tuning — with zero data collection, zero training, and instant iteration. Fine-tuning earns its
 place only when (a) prompting has clearly plateaued, (b) you need the behavior at a consistency or
 scale prompting can't hit, or (c) you want to bake the behavior in so you can *drop* the long prompt
@@ -91,12 +91,12 @@ it produces your preferred style/format/decision *without* being told in the pro
 
 **6. The cost reality — why it's a commitment, not a tweak.**
 Fine-tuning isn't one action; it's a small project with ongoing weight:
-- **Data prep** (Part D) — collecting, cleaning, formatting, and splitting examples. This is most of
+- **Data prep** ([Part D](#part-d--data-the-thing-that-actually-determines-success)) — collecting, cleaning, formatting, and splitting examples. This is most of
   the work.
 - **The training run** — time and compute cost (managed by the provider, but not free or instant).
 - **Hosting & versioning** — you now own a *custom model artifact*: deploy it, track which version is
   in prod, re-evaluate it when the base model updates, retrain when your needs drift.
-- **Evaluation** — you can't know it helped without an eval set (Part E).
+- **Evaluation** — you can't know it helped without an eval set ([Part E](#part-e--deciding--measuring)).
 - *Build consequence:* Budget for the *lifecycle*, not just the training run. A fine-tuned model is
   something you maintain. That maintenance cost is a big part of why "try the cheaper rung first" is
   the rule.
@@ -120,11 +120,11 @@ Fine-tuning isn't one action; it's a small project with ongoing weight:
 
 **8. What a provider fine-tuning API gives you — conceptually.**
 The hosted path (e.g. OpenAI's fine-tuning API; Anthropic offers tuning for select models/enterprise)
-hides the machinery: you **upload a dataset** (JSONL of example conversations, Part D), **start a
+hides the machinery: you **upload a dataset** (JSONL of example conversations, [Part D](#part-d--data-the-thing-that-actually-determines-success)), **start a
 tuning job**, and get back a **new model id** you call exactly like any other model. You don't manage
 GPUs or training loops. (Key/billing handling is out of scope here, per the program.)
 - *Build consequence:* For most teams, fine-tuning is "prepare a good dataset, submit it, get a model
-  id back." That means **your leverage is almost entirely in the data** — which is why Part D is the
+  id back." That means **your leverage is almost entirely in the data** — which is why [Part D](#part-d--data-the-thing-that-actually-determines-success) is the
   real work and the rest is plumbing.
 
 **9. Distillation — the cost play worth knowing by name.**
@@ -166,7 +166,7 @@ point, more examples give diminishing returns.
 Hold back a portion of your examples as an **eval set the model never trains on**. After tuning, you
 measure performance on that held-out set to see if it actually learned the behavior *generally* vs.
 just memorized the training examples. This is non-negotiable and the same discipline you'll formalize
-in Section 7.
+in [Chapter 7](07-evaluation.md).
 - *Build consequence:* Without a held-out eval set you can't distinguish "the model learned the task"
   from "the model memorized the answer key." Build the split *before* you train, and treat the eval
   set as sacred — don't peek, don't train on it.
@@ -177,7 +177,7 @@ in Section 7.
 
 **13. The decision tree — run it before anyone trains anything.**
 1. **Is it a knowledge gap?** (model lacks information) → **RAG.** Stop.
-2. **Is it a behavior/format/style gap?** → first, **engineer the prompt + few-shot** (Chapter 3). Did
+2. **Is it a behavior/format/style gap?** → first, **engineer the prompt + few-shot** ([Chapter 3](03-prompt-engineering.md)). Did
    that solve it? → **Stop, you're done.**
 3. **Did prompting plateau** *and* do you have (or can you build) a few hundred consistent examples
    *and* is the task narrow and stable enough to be worth maintaining a custom model? → **fine-tune.**
@@ -187,14 +187,14 @@ in Section 7.
   justifies ongoing maintenance." If any of those is missing, climb back down the ladder.
 
 **14. You cannot tell if fine-tuning helped without an eval set.**
-"It seems better" is not a result. You need the same `(input, expected)` eval harness from Chapter 4 /
-Section 7: score the *base model with your best prompt* against the *fine-tuned model* on the
+"It seems better" is not a result. You need the same `(input, expected)` eval harness from [Chapter 4](04-rag.md) /
+[Chapter 7](07-evaluation.md): score the *base model with your best prompt* against the *fine-tuned model* on the
 held-out set, with a real metric. Often the honest finding is "the well-prompted base model was
 already good enough" — which saves you the entire fine-tuning lifecycle. That's a *win*, not a
 failure.
 - *Build consequence:* The eval set is what turns "should we fine-tune?" from an argument into a
   measurement. Build it first; it both *justifies* the decision and *proves* the result. This is the
-  direct bridge into **Section 7 (Evaluation)**.
+  direct bridge into **[Chapter 7](07-evaluation.md)**.
 
 **15. The common production combo: fine-tune for *behavior*, RAG for *facts*.**
 These aren't competitors — the strongest systems often use both. Fine-tune a model so it *reliably
@@ -213,7 +213,7 @@ runtime. Each handles the gap it's actually good at: tuning owns behavior, retri
   framing.
 - A short read on **LoRA/PEFT** at the conceptual level (what an adapter is, why it's cheap) — enough
   to follow vendor docs, not to implement it.
-- Your own Chapter 3 (prompting), Chapter 4 (RAG) — the two rungs you must rule out before fine-tuning.
+- Your own [Chapter 3](03-prompt-engineering.md) (prompting), [Chapter 4](04-rag.md) (RAG) — the two rungs you must rule out before fine-tuning.
 
 **Hands-on tasks**
 1. **Diagnose the gap (×4):** for each scenario, label it *knowledge* vs *behavior* and name the rung
