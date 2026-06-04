@@ -55,3 +55,39 @@ Every day-block follows the same shape so the team always knows where to look:
 - Side-by-side **Anthropic / OpenAI** Python where code applies
 - **Resources** → **Hands-on tasks** → **Questions** (Check understanding / Apply it / Stretch)
   → **Answer key** → **Deliverable** → **Daily update (DM to Ayush)** → **Time estimate**
+
+## Gaps & roadmap (planned additions)
+
+The core spine (sections 1–8) is built. These additions close known gaps for engineers
+**shipping** real LLM features. To avoid renumbering the live course, they land two ways:
+**grafts** (new Parts inside existing chapters — purely additive) and **extension
+chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
+
+> **v1 (current cohort):** append as below. **v2 (next cohort):** interleave at the
+> *ideal slot* so security follows RAG/agents and governance precedes deployment.
+
+### New chapters — Advanced & Production Track (Day 17+)
+
+| Topic | Scope | v2 ideal slot |
+|-------|-------|---------------|
+| Beyond Text — Vision, Voice & Generation | vision-in (OCR, tables, charts, multi-image); audio-in (STT, diarization); audio-out (TTS); realtime voice agents (turn-taking, latency budget); image/video generation; provenance (C2PA); multimodal eval & cost | after ch03 |
+| Frameworks, the Ecosystem & MCP | raw SDKs vs orchestration frameworks (LangChain, LlamaIndex, Vercel AI SDK, Pydantic AI); build-vs-framework decision; MCP (client/server/tools/resources); hands-on MCP server | after ch05 |
+| Security, Privacy & Governance | what data may leave to a provider; PII redaction; residency; DPAs / zero-retention / training opt-out; GDPR, HIPAA, EU AI Act; LLM-app threat model; defense-in-depth map (which control lives where) | before ch08 |
+| Memory & Personalization _(or a Part in ch05)_ | session vs cross-session state; what to store / what not to; summary buffers, memory store, RAG-over-history, structured profiles; personalization; user view/delete controls | after ch05 |
+
+### Grafts into existing chapters (additive Parts, no renumbering)
+
+| Chapter | New Part | Hands-on |
+|---------|----------|----------|
+| 04 — RAG | Multi-tenant retrieval & isolation | tenant filter + a test proving user A can't retrieve user B's docs |
+| 05 — Agents | Tool & output safety | validate/allowlist tool args before execution; injection-via-tool-output test |
+| 07 — Evaluation | Testing code vs evaluating the model | mock the LLM; deterministic suite separate from the eval set |
+| 08 — Deployment | Concurrency & throughput; safe output rendering | parallel fan-out + throughput measure; sanitize a rendered output |
+
+### Rollout order
+
+1. **The four grafts** — small, additive, immediately useful to the cohort already in those chapters.
+2. **Security, Privacy & Governance** — highest risk reduction.
+3. **Frameworks & MCP** — most time-sensitive / 2026-relevant.
+4. **Beyond Text** — biggest capability unlock, largest effort.
+5. **Memory & Personalization.**
