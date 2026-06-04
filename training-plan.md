@@ -44,6 +44,14 @@ something I'd build?"**
 8. [Day 15–16 — Deployment & Production: running an LLM feature for real](chapters/08-day-15-16-deployment.md)
 9. Day 17+ — Capstone Project _(to be planned)_
 
+### Advanced & Production Track (Day 17+)
+
+Extension chapters that close known gaps for engineers shipping real LLM features,
+drafted alongside the Capstone (the rest of the track is backlogged in _Gaps & roadmap_ below):
+
+1. [Cloud Managed-GenAI Platforms](chapters/adv-cloud-managed-genai-platforms.md)
+2. [Monitoring, Drift & the Continuous-Improvement Loop](chapters/adv-monitoring-drift-loop.md)
+
 ## How each chapter is built
 
 Every day-block follows the same shape so the team always knows where to look:
@@ -66,15 +74,21 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 > **v1 (current cohort):** append as below. **v2 (next cohort):** interleave at the
 > *ideal slot* so security follows RAG/agents and governance precedes deployment.
 
+> **Status:** the first wave is now **drafted** (marked ✅) — two extension chapters and ten
+> grafts derived from a review of ~3,000 real Gen-AI interview questions. Frameworks/libraries
+> (LangChain, LlamaIndex, …) are intentionally deferred. The rest (marked ⬜) is still planned.
+
 ### New chapters — Advanced & Production Track (Day 17+)
 
 | Topic | Scope | v2 ideal slot |
 |-------|-------|---------------|
 | Beyond Text — Vision, Voice & Generation | vision-in (OCR, tables, charts, multi-image); audio-in (STT, diarization); audio-out (TTS); realtime voice agents (turn-taking, latency budget); image/video generation; provenance (C2PA); multimodal eval & cost | after ch03 |
 | Frameworks, the Ecosystem & MCP | raw SDKs vs orchestration frameworks (LangChain, LlamaIndex, Vercel AI SDK, Pydantic AI); build-vs-framework decision; MCP (client/server/tools/resources); hands-on MCP server | after ch05 |
-| Security, Privacy & Governance | what data may leave to a provider; PII redaction; residency; DPAs / zero-retention / training opt-out; GDPR, HIPAA, EU AI Act; LLM-app threat model; defense-in-depth map (which control lives where) | before ch08 |
+| Security, Privacy & Governance | the **OWASP LLM Top-10 (2025)** as shared vocabulary + the **defense-in-depth map** — controls at four stations (input → model → output → action) chosen by failure mode. Data governance / leak-to-provider: pre-call **PII/PHI redaction** (Presidio + custom clinical recognizers), self-host vs **ZDR / DPA / BAA / training-opt-out / residency**, per-provider retention defaults. **PHI & HIPAA** (BAA; Safe-Harbor vs Expert-Determination de-identification). **Prompt injection in depth** — direct vs **indirect** (poisoned retrieved doc / tool output / web page / image); spotlighting, instruction hierarchy, injection classifiers (Azure Prompt Shields, Llama Prompt Guard), and the **dual-LLM / CaMeL** architectural defense. **Output guardrails** (leak/PII scan, content-safety, grounding check, de-anonymize). **Guardrail engineering / "which guardrail"** — build-vs-buy menu (Presidio, Llama Guard, NeMo Guardrails, Guardrails AI, Azure AI Content Safety, AWS Bedrock Guardrails) + risk→station rule. **API & cloud security** (API-key vs OAuth2/OIDC, per-user-token isolation, **token-based rate limiting** for cost/DoS, audit trails). **Regulatory** (GDPR; HIPAA; **EU AI Act** — enforcement + high-risk obligations from 2026-08-02, Article 50 transparency, fines to €35M/7%). Governance as engineering (versioning, eval gates, audit logs, incident response, a written threat model). | before ch08 |
 | Memory & Personalization _(or a Part in ch05)_ | session vs cross-session state; what to store / what not to; summary buffers, memory store, RAG-over-history, structured profiles; personalization; user view/delete controls | after ch05 |
 | LLM Application Architecture & System Design | workflows vs agents (when deterministic orchestration beats an autonomous loop); the orchestration patterns — prompt chaining, routing (LLM-as-classifier), parallelization (sectioning/voting), orchestrator-workers, evaluator-optimizer; the compound-AI-system framing (models + retrievers + tools + validators, not one big prompt); gateway / provider-abstraction layer (model-agnostic SDK boundary, fallback chains, model tiering/routing); reliability (retries, timeouts, circuit breakers, rate-limit/quota handling, graceful degradation); context engineering & the data plane (context window as a managed resource; ingestion/chunking/reindex as a pipeline service); caching tiers (prompt, semantic, response, embedding); guardrails as an input→model→output layer; streaming architecture (SSE/WebSocket, cancellation, partial rendering); observability (LLM spans, per-tenant cost attribution) & the feedback loop | between ch05 and ch08 |
+| ✅ [Cloud Managed-GenAI Platforms](chapters/adv-cloud-managed-genai-platforms.md) | the hyperscaler GenAI menu for engineers who *consume* (not train) models: consume-via-API (Bedrock, Azure OpenAI / Microsoft Foundry, Vertex) vs host-your-own (SageMaker, Azure ML, Vertex endpoints); reading the catalogs (incl. 2026 rebrands + the Assistants→Foundry Agent Service retirement); **serverless inference economics** (scale-to-zero vs always-on vs provisioned-concurrency — the "does it cost when idle?" answer); GPU instance sizing; managed model registry / MLflow; multi-region HA as config; the managed-vs-self-host decision | after ch08 |
+| ✅ [Monitoring, Drift & the Continuous-Improvement Loop](chapters/adv-monitoring-drift-loop.md) | the running-in-prod loop for engineers who don't own the weights: **drift re-pointed** to three app-level decays (input-distribution shift, retrieval-quality decay via probe sets, output-quality decay); **"retraining" re-pointed** to refreshing corpus/prompts/few-shots/model-pins (event-driven); the full loop — trace → online eval → triage → fix the right artifact → gate → shadow/canary → roll out/back; production RAG ops & agentic-prod challenges | between Architecture & Capstone |
 
 ### Grafts into existing chapters (additive Parts, no renumbering)
 
@@ -87,12 +101,27 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 | 08 — Deployment | Concurrency & throughput; safe output rendering | parallel fan-out + throughput measure; sanitize a rendered output |
 | 07 — Evaluation | The feedback loop: user signals → eval set | capture thumbs-up/down + traces, append them to the eval set |
 | 08 — Deployment | Resilience: retries, timeouts, circuit breakers, provider fallback | wrap a call with retry+timeout+fallback model; force a 429/outage and prove graceful degradation |
+| ✅ 01 — Foundations | Model families: encoder vs decoder (and where embeddings come from) | contextual-embedding demo ("river bank" vs "savings bank"); map the chat / embedding / reranker models onto decoder vs encoder |
+| ✅ 03 — Prompt Engineering | Redact PII before the call (don't send what you don't need) | run user text through a redactor (Presidio) before sending; restore the placeholders in the output |
+| ✅ 04 — RAG | Document ingestion & extraction (the front half of the pipeline) | Docling-in-Docker on a messy multi-page PDF with tables + a scanned page; OCR off→on; feed into the brute-force store; 5-field extraction-accuracy compare |
+| ✅ 04 — RAG | Choosing an embedding model + cross-encoder reranking | embedding bake-off (hit-rate@4); add a cross-encoder reranker (rank promotion); Matryoshka half-dim truncation tradeoff |
+| ✅ 04 — RAG | Retrieved text is untrusted data (indirect prompt injection) | poison a corpus doc; show the naive RAG prompt obeys it; defend with spotlighting + an injection check |
+| ✅ 04 — RAG | Managed RAG pipelines (cloud-native) | stand up the corpus as Bedrock KB / Vertex RAG Engine / Azure AI Search; compare answer quality + setup effort vs the hand-built pipeline |
+| ✅ 05 — Agents | Managed agent runtimes (cloud-native agents) | re-implement the hand-built agent as a Bedrock Agent / Vertex Agent Engine; compare lines-of-code / latency / flexibility |
+| ✅ 07 — Evaluation | Online eval & evaluating without a gold answer | sample 20% of prod, run the reference-free faithfulness judge → live hallucination rate; thumbs-down → trace → fix the right artifact |
+| ✅ 07 — Evaluation | Hallucination: a named taxonomy, detection & the BLEU/ROUGE reframe | span-level faithfulness check; classify intrinsic vs extrinsic; SelfCheckGPT self-consistency on a no-context question |
+| ✅ 08 — Deployment | Tracing with spans (OTel GenAI) + shadow-mode rollout | parent/child spans on the Day-15 endpoint; shadow a 2nd prompt version, score it, make a go/no-go call |
 
 ### Rollout order
 
-1. **The seven grafts** — small, additive, immediately useful to the cohort already in those chapters.
-2. **Security, Privacy & Governance** — highest risk reduction.
-3. **Frameworks & MCP** — most time-sensitive / 2026-relevant.
-4. **LLM Application Architecture & System Design** — ties the whole spine together; highest leverage for engineers shipping real systems.
-5. **Beyond Text** — biggest capability unlock, largest effort.
-6. **Memory & Personalization.**
+Legend: ✅ drafted (in the repo) · ⬜ planned.
+
+1. ✅ **The ten new grafts** — encoder/decoder (ch01), PII redaction (ch03), document ingestion, embedding-model choice + reranking, indirect injection, managed RAG (ch04), managed agent runtimes (ch05), online eval + hallucination (ch07), span tracing + shadow rollout (ch08). Small, additive, immediately useful to the cohort already in those chapters.
+2. ✅ **Cloud Managed-GenAI Platforms** — the biggest standalone gap; the cloud-native sequel to ch08.
+3. ✅ **Monitoring, Drift & the Continuous-Improvement Loop** — the running-in-prod loop you operate after architecting and deploying.
+4. ⬜ **The seven earlier grafts** (multi-tenant retrieval, tool/output safety, testing-vs-eval, concurrency/safe-render, vector-DB depth, feedback loop, resilience) — still to write.
+5. ⬜ **Security, Privacy & Governance** — highest risk reduction; the *injection* + *PII-redaction* reflexes are already grafted into ch03/ch04, keep the full chapter before ch08.
+6. ⬜ **Frameworks & MCP** — most time-sensitive / 2026-relevant. (Frameworks/libraries intentionally deferred for now.)
+7. ⬜ **LLM Application Architecture & System Design** — ties the whole spine together; highest leverage for engineers shipping real systems.
+8. ⬜ **Beyond Text** — biggest capability unlock, largest effort.
+9. ⬜ **Memory & Personalization.**

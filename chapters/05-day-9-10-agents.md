@@ -269,9 +269,95 @@ decisions only at the genuinely open points.
 
 ---
 
+## Part G — Managed agent runtimes (cloud-native agents)
+
+Everything so far had *you* own the loop: your `while`, your `messages` list, your `max_steps`, your
+tracing. A managed agent runtime is the cloud running that exact loop **server-side** — you supply
+the model, the tools, and (optionally) a knowledge base, and the provider executes think→act→observe
+on its own infrastructure. You give up control of the loop in exchange for not operating it. This
+Part is about *that trade* and how the **invocation** differs from the Day-9 hand-built loop. (The
+broader platform/pricing/region picture lives in the Cloud Managed-GenAI Platforms extension
+chapter; here we stay on the agent *runtime* decision.)
+
+**19. When a managed runtime beats your hand-built loop.**
+Your from-scratch loop wins when you need to *see and shape* every step — custom stop logic, bespoke
+compaction, weird tool orchestration, full control of the trajectory. A managed runtime wins when the
+loop itself is undifferentiated and the *hard parts are operational*: you need IAM-scoped tool
+permissions, VPC-private tool calls, audit logs, autoscaling, session isolation, and long-running
+executions — and you'd rather not build and run all of that. The agent's *logic* is the same loop
+from Part B; what you're really choosing is **who operates it**.
+- *Build consequence:* Pick managed when the value is in the *governance and ops* (auth, audit,
+  scaling, isolation) and the loop is standard reason-act. Keep your own loop when the *loop itself*
+  is the product — non-standard control flow, custom guardrails, or step-level behavior you can't
+  express in a provider's schema.
+
+**20. AWS Bedrock Agents — the loop runs server-side behind one call.**
+You configure an agent from three declared pieces: a **foundation model**, **action groups** (your
+tools, backed by a Lambda or an OpenAPI/API endpoint — the managed equivalent of concept 6's
+toolbox), and a **Knowledge Base** (managed RAG over your data — Day 7–8's `retrieve()`, run by AWS).
+AWS then executes the *entire* reason-act tool loop for you: the model picks an action group, Bedrock
+invokes your Lambda, feeds the result back, queries the Knowledge Base when needed, and loops until
+done. Your code shrinks to **one `InvokeAgent` call** — no `while`, no `messages` bookkeeping, no
+stop-reason check. Above the turnkey "Agents" product sits the modular **AgentCore** tier:
+separately-consumable primitives — **Runtime** (serverless execution, up to ~8-hour runs, per-session
+isolation), **Memory**, **Gateway** (turns existing APIs into agent tools), **Identity**, and
+**Observability** — that you compose into your own runtime. The choice: **managed Agents** when you
+want the whole loop turnkey; **AgentCore** when you want the building blocks and your own assembly.
+- *Build consequence:* With Bedrock Agents, concepts 5, 10, 12, and 17 (the loop, context growth,
+  compaction, tracing) move *inside AWS* — convenient, but you observe the trajectory through
+  Bedrock/CloudWatch traces, not your own logs, and you bound it with AWS config, not your `max_steps`.
+  Reach for AgentCore the moment the turnkey loop's schema can't express a control or guardrail you
+  need (concept 16).
+
+**21. GCP Vertex Agent Engine — managed runtime, ADK as the deploy target.**
+On Google Cloud the managed runtime is **Vertex AI Agent Engine**: it hosts your agent and provides
+the operational layer — **autoscaling**, managed **sessions/memory**, and **long-running**
+executions — so you don't run the serving loop yourself. You author the agent in a code-first
+framework (Google's **ADK**) and **deploy it onto Agent Engine** as the target; Agent Engine is the
+runtime, ADK is just how the agent is defined. (We don't teach orchestration frameworks here — ADK
+matters only as the thing Agent Engine runs.)
+- *Build consequence:* Same trade as Bedrock, different vendor: you hand sessions, memory, and scaling
+  to Google and invoke a deployed endpoint instead of driving your own loop. Evaluate it on the *ops*
+  it removes (sessions, autoscale, long-running) versus the lock-in of authoring against its runtime.
+
+**22. Azure Copilot Studio — low/no-code agents with model-choice-per-use-case (BYOM).**
+Copilot Studio is the **low/no-code** end of the spectrum: you build an agent in a visual builder —
+topics, tools, knowledge — with little or no loop code at all. Its agent-building lever is **BYOM
+("bring your own model")**: you wire any **Azure AI Foundry** model to a given prompt/agent, and you
+can **swap the model without rebuilding the agent** — cheaper model for routine prompts, a stronger
+one where it matters. That's *model choice per use case* expressed as configuration, not code.
+- *Build consequence:* Copilot Studio trades the most control for the least code — right for
+  business/internal agents and fast iteration, wrong when you need step-level control of the loop.
+  BYOM means your Day-3 "pick the model per task" decision becomes a per-prompt setting you can change
+  without touching the agent's wiring.
+
+**23. The runtime tradeoff axis — managed vs. your own loop.**
+Same axis that runs through this whole day, applied to *who owns the loop*:
+- **Managed runtime (Bedrock Agents / Vertex Agent Engine / Copilot Studio):** far less code, and
+  **IAM, VPC, audit, scaling, and session isolation are baked in**. You pay in **schema lock-in** (the
+  agent must fit the provider's action-group/tool/knowledge model) and **less control** over the loop,
+  stop logic, and trajectory.
+- **Your own loop (Part B):** total control and portability across providers; you operate everything —
+  bounds, tracing, memory, auth — yourself.
+- **Invocation difference:** the Day-9 loop is *your process* running many model calls and tool
+  executions locally; a managed runtime is a **single remote call** (`InvokeAgent` / a deployed Agent
+  Engine endpoint / a Copilot Studio invocation) where the provider runs the steps and returns the
+  result — your `while`, `stop_reason`, and tool execution all happen on their side.
+- *Build consequence:* Choose by where your differentiation is. If it's governance and operating an
+  agent safely at scale, managed wins. If it's the loop's behavior itself, keep Part B. Either way the
+  *concepts* (tools as prompts, recoverable errors, bounds, observability, gating writes) are
+  unchanged — managed runtimes implement them *for* you; they don't remove them.
+
+---
+
 **Resources**
 - Anthropic — *Building Effective Agents* (the agent-vs-workflow framing, and why simpler is usually
   better); tool-use / agent docs.
+- AWS — Bedrock Agents (action groups, Knowledge Bases, `InvokeAgent`) and AgentCore (Runtime / Memory
+  / Gateway / Identity / Observability). GCP — Vertex AI Agent Engine (managed runtime) + ADK as the
+  deploy target. Azure — Copilot Studio (low/no-code) + Azure AI Foundry models (BYOM).
+- The **Cloud Managed-GenAI Platforms** extension chapter — the broader platform, cost, and region
+  picture for all three clouds (this Part covers only the agent-*runtime* decision).
 - OpenAI — function-calling guide and the Agents SDK overview (read for the loop concepts; we build
   raw).
 - Your own Day 3 (Part D, tool calling) and Day 7–8 (`retrieve()`) — direct prerequisites; the
@@ -296,6 +382,14 @@ decisions only at the genuinely open points.
    at the end. This is your debugging + eval artifact.
 8. *(Stretch)* **Compaction:** after step 5, summarize the oldest steps into one message and continue.
    Compare total tokens with and without.
+9. *(Stretch)* **Managed runtime, same agent:** re-implement your hand-built agent as a **Bedrock
+   Agent** (or **Vertex Agent Engine**): define *one* tool (an action group / tool wrapping your
+   `search_docs`) and a **Knowledge Base** over the Day 7–8 corpus, then invoke it with a single
+   `InvokeAgent` (or deployed-endpoint) call on the same question. Measure three things against the
+   Part B loop: **lines of code** (yours vs. the managed config + one call), **latency** (your local
+   multi-call loop vs. the single remote call), and **flexibility** (what step-level control you lose).
+   Write **3 bullets**: when you'd pick the hand-built loop, when managed Agents, and when AgentCore /
+   the modular tier (concepts 19–23).
 
 **Questions**
 

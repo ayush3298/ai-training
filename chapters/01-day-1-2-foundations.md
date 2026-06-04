@@ -253,6 +253,52 @@ tendency is fundamental.
   mitigations — grounding in retrieved context (RAG), giving it tools (search/code), and
   verifying output — are exactly what sections 4–7 teach. Design for verification from day one.
 
+**7. Model families: encoder vs decoder (and where embeddings come from).**
+
+Every chat/instruct/reasoning model above is one architecture family. As a builder you meet a
+second family too — usually without realizing it, because it's what powers the embedding model
+in your search/RAG stack. The split is about *which tokens each token is allowed to look at*.
+
+**(a) Encoder-only — understand / represent.** *Bidirectional* attention: every token sees the
+tokens to its left **and** its right at once. Trained with masked-language-modeling (blank out
+a token, predict it from both sides). It does **not** generate text — it reads a whole input
+and emits *contextual token embeddings* plus a single pooled vector for the input. Text in →
+vector (or label) out.
+  - Examples: BERT, RoBERTa, ModernBERT.
+
+**(b) Decoder-only — generate.** *Causal / autoregressive* attention: each token sees only what
+came **before** it (it can't peek ahead, because at generation time the future doesn't exist
+yet). This is the next-token predictor from concept 1 — text in → more text out. Every chat
+model taught elsewhere in this chapter is decoder-only.
+  - Examples: GPT, Claude, Gemini.
+
+*One-line mental model:* **encoder = understand/represent** (text in → vector/label);
+**decoder = generate** (text in → more text).
+
+*Contextual embeddings, briefly.* "Contextual" means the same word gets a *different* vector
+depending on its neighbours — "river *bank*" and "savings *bank*" land in different places in
+vector space, because the encoder saw the surrounding words. This is exactly why BERT beat the
+older *static* embeddings (word2vec/GloVe), which gave "bank" one fixed vector regardless of
+sentence, and it's the reason semantic search actually works: similar *meaning* → nearby
+vectors.
+
+*The BERT → RoBERTa → ModernBERT question ("isn't BERT old?").* BERT (2018) is the original
+encoder. RoBERTa is the same architecture **trained better** — dropped the next-sentence-
+prediction objective, used much more data, and switched to dynamic masking. ModernBERT (2024+)
+is a modernized encoder with an 8k context window and heavy code in its training data. So the
+*family* is current and actively used even though the first model is old.
+
+*Out of scope (you never need this to build):* the attention math, the MLM/NSP loss internals,
+and training any encoder yourself. You call hosted encoders; you don't make them.
+
+- *Build consequence:* (a) The embedding model behind your RAG is an *encoder*-family model and
+  your chat model is a *decoder* — you **call** both and **train** neither. (b) Never repurpose
+  a decoder's raw hidden states or last-token activations as semantic-search embeddings: a
+  decoder only looks left and over-weights the most recent tokens, so its vectors are a poor
+  measure of whole-text meaning — use a purpose-built embedding model instead. (c) Picking the
+  right embedding model (dimensions, context, language/code coverage) is its own decision; this
+  seeds the embedding-model material in the RAG chapter (ch04).
+
 ---
 
 ### Resources (beyond the video)
@@ -287,6 +333,22 @@ tendency is fundamental.
    memory" — and predict how a product might fetch that paragraph automatically (you just
    described RAG).
 
+**D. Embeddings are contextual (the encoder vs decoder seed).**
+1. Take one ambiguous word in two sentences — "I sat on the river bank" vs "I deposited cash at
+   the savings bank" — and send each through a hosted embedding endpoint (any provider's
+   embeddings API, or a free embedding playground). You don't train anything; you just call it.
+
+        # tiny shape — embeddings API call (provider-agnostic)
+        v1 = embed("I sat on the river bank")          # → vector
+        v2 = embed("I deposited cash at the savings bank")
+        # the vectors for "bank" differ because the surrounding words differ
+
+2. Confirm the two vectors are not identical (the same word, two meanings → two vectors). That's
+   "contextual."
+3. Map each model this course uses onto its family: the **chat model** (decoder), the
+   **embedding model** (encoder), the **reranker** (encoder). Then write two sentences on why
+   you wouldn't use a chat model to produce search vectors.
+
 ---
 
 ### Questions
@@ -302,23 +364,28 @@ tendency is fundamental.
 8. When would you choose a reasoning model over a standard chat model — and what's the cost?
 9. Why is "the model hallucinated" not a surprising failure, given how it works?
 10. What does it mean to say the context window is "finite and precious"?
+11. What's the difference between an encoder-only and a decoder-only model, in one line each —
+    and which family does your chat model belong to, versus your embedding model?
 
 **Apply it (builder scenarios — answer in 2–3 sentences):**
-11. A teammate says, "Let's just ask the model for our company's latest refund policy — it was
+12. A teammate says, "Let's just ask the model for our company's latest refund policy — it was
     probably in the training data." What's wrong with that plan, and what would you do instead?
-12. You're building a feature that classifies support tickets into 5 categories. What
+13. You're building a feature that classifies support tickets into 5 categories. What
     temperature would you lean toward, and which model tier — and why?
-13. Your automated test asserts the model's reply equals an exact string, and it keeps failing
+14. Your automated test asserts the model's reply equals an exact string, and it keeps failing
     intermittently. Diagnose the root cause and propose a better test.
-14. A summarizer works great on famous books but produces vague, wrong summaries for an
+15. A summarizer works great on famous books but produces vague, wrong summaries for an
     internal PDF. Explain why, using today's concepts, and name the fix.
-15. At higher temperature your chatbot occasionally emits a bizarre, off-topic word. How would
+16. At higher temperature your chatbot occasionally emits a bizarre, off-topic word. How would
     you reduce that *without* making every answer identical?
+17. A teammate wants to skip adding an embedding model and just feed your chat model's
+    last-token hidden state into the vector database for semantic search. Why is that a bad
+    idea, and what should you use instead?
 
 **Stretch / discussion (optional):**
-16. If context is the model's working memory, what trade-offs appear as you stuff more and more
+18. If context is the model's working memory, what trade-offs appear as you stuff more and more
     into it? (Think cost, latency, and the model "losing the plot.")
-17. Base models are rarely shipped to users. Give one realistic situation where a *builder*
+19. Base models are rarely shipped to users. Give one realistic situation where a *builder*
     might still prefer a base model.
 
 **Answer key (peek only after attempting):**
@@ -333,22 +400,26 @@ token can't be sampled; temperature only reshapes odds, it never removes the tai
 genuine multi-step reasoning (hard math/code/logic); cost = more latency and money. · 9. It
 always emits a *plausible* continuation regardless of whether it knows — confident invention is
 built in. · 10. The window has a hard token limit; every instruction token competes with data
-tokens, and bigger contexts cost more and can dilute focus. · 11. Weights are a vague, frozen,
-unverifiable recollection — it'll likely hallucinate; put the real policy text in the context
-(retrieve it / RAG). · 12. Low temperature (0–0.3) and a small/fast tier — you want consistent,
-cheap, high-volume labels. · 13. Output is stochastic; exact-match is the wrong assertion —
-test semantically or with schema/rule validation. · 14. Famous books are richly represented in
-the weights (vague recall works); the internal PDF isn't — supply it in context (RAG). ·
-15. Add a top-p (~0.9) or top-k guardrail to fence off the tail while keeping some variety. ·
-16. More tokens = higher cost/latency and risk of under-weighting buried details ("lost in the
-middle"). · 17. e.g. raw text completion, studying model behavior, or specialized
-fine-tuning/research workflows.
+tokens, and bigger contexts cost more and can dilute focus. · 11. Encoder-only = bidirectional,
+reads a whole input and emits a vector/label (understand/represent); decoder-only = causal,
+generates the next token (generate). Your chat model is a decoder; your embedding model is an
+encoder. · 12. Weights are a vague, frozen, unverifiable recollection — it'll likely
+hallucinate; put the real policy text in the context (retrieve it / RAG). · 13. Low temperature
+(0–0.3) and a small/fast tier — you want consistent, cheap, high-volume labels. · 14. Output is
+stochastic; exact-match is the wrong assertion — test semantically or with schema/rule
+validation. · 15. Famous books are richly represented in the weights (vague recall works); the
+internal PDF isn't — supply it in context (RAG). · 16. Add a top-p (~0.9) or top-k guardrail to
+fence off the tail while keeping some variety. · 17. A decoder only attends left and over-weights
+recent tokens, so its hidden states are a poor representation of whole-text meaning; use a
+purpose-built (encoder-family) embedding model. · 18. More tokens = higher cost/latency and risk
+of under-weighting buried details ("lost in the middle"). · 19. e.g. raw text completion,
+studying model behavior, or specialized fine-tuning/research workflows.
 
 ---
 
 **Deliverable:** A short note — 6–8 bullets — titled *"What an LLM is, and what that means for
 building on it."* Each bullet = one concept + its practical implication. Attach your answers to
-questions 1–15.
+questions 1–17.
 
 **Daily update (DM to Ayush):** one-liner — done / where you stopped / any blockers.
 
