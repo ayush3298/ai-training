@@ -1,0 +1,16 @@
+# --- Private: real colleagues' PII (names, emails, Slack IDs) ---
+CLAUDE.md
+training-updates.md
+
+# --- Private: internal tooling that embeds the team roster ---
+.claude/
+
+# --- Local agent/tooling state (not for publication) ---
+.omc/
+
+# --- OS / editor cruft ---
+.DS_Store
+*.swp
+.idea/
+__pycache__/
+*.pyc
