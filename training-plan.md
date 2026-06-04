@@ -74,6 +74,7 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 | Frameworks, the Ecosystem & MCP | raw SDKs vs orchestration frameworks (LangChain, LlamaIndex, Vercel AI SDK, Pydantic AI); build-vs-framework decision; MCP (client/server/tools/resources); hands-on MCP server | after ch05 |
 | Security, Privacy & Governance | what data may leave to a provider; PII redaction; residency; DPAs / zero-retention / training opt-out; GDPR, HIPAA, EU AI Act; LLM-app threat model; defense-in-depth map (which control lives where) | before ch08 |
 | Memory & Personalization _(or a Part in ch05)_ | session vs cross-session state; what to store / what not to; summary buffers, memory store, RAG-over-history, structured profiles; personalization; user view/delete controls | after ch05 |
+| LLM Application Architecture & System Design | workflows vs agents (when deterministic orchestration beats an autonomous loop); the orchestration patterns — prompt chaining, routing (LLM-as-classifier), parallelization (sectioning/voting), orchestrator-workers, evaluator-optimizer; the compound-AI-system framing (models + retrievers + tools + validators, not one big prompt); gateway / provider-abstraction layer (model-agnostic SDK boundary, fallback chains, model tiering/routing); reliability (retries, timeouts, circuit breakers, rate-limit/quota handling, graceful degradation); context engineering & the data plane (context window as a managed resource; ingestion/chunking/reindex as a pipeline service); caching tiers (prompt, semantic, response, embedding); guardrails as an input→model→output layer; streaming architecture (SSE/WebSocket, cancellation, partial rendering); observability (LLM spans, per-tenant cost attribution) & the feedback loop | between ch05 and ch08 |
 
 ### Grafts into existing chapters (additive Parts, no renumbering)
 
@@ -83,11 +84,14 @@ chapters** (Days 17+ "Advanced & Production Track," alongside the Capstone).
 | 05 — Agents | Tool & output safety | validate/allowlist tool args before execution; injection-via-tool-output test |
 | 07 — Evaluation | Testing code vs evaluating the model | mock the LLM; deterministic suite separate from the eval set |
 | 08 — Deployment | Concurrency & throughput; safe output rendering | parallel fan-out + throughput measure; sanitize a rendered output |
+| 07 — Evaluation | The feedback loop: user signals → eval set | capture thumbs-up/down + traces, append them to the eval set |
+| 08 — Deployment | Resilience: retries, timeouts, circuit breakers, provider fallback | wrap a call with retry+timeout+fallback model; force a 429/outage and prove graceful degradation |
 
 ### Rollout order
 
-1. **The four grafts** — small, additive, immediately useful to the cohort already in those chapters.
+1. **The six grafts** — small, additive, immediately useful to the cohort already in those chapters.
 2. **Security, Privacy & Governance** — highest risk reduction.
 3. **Frameworks & MCP** — most time-sensitive / 2026-relevant.
-4. **Beyond Text** — biggest capability unlock, largest effort.
-5. **Memory & Personalization.**
+4. **LLM Application Architecture & System Design** — ties the whole spine together; highest leverage for engineers shipping real systems.
+5. **Beyond Text** — biggest capability unlock, largest effort.
+6. **Memory & Personalization.**
