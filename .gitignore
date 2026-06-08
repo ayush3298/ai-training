@@ -5,6 +5,9 @@ training-updates.md
 # --- Private: internal tooling that embeds the team roster ---
 .claude/
 
+# --- Work in progress: day-by-day reflow (not published for now) ---
+days/
+
 # --- Local agent/tooling state (not for publication) ---
 .omc/
 
