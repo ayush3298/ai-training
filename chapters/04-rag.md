@@ -1012,6 +1012,142 @@ ties them together:
 
 ---
 
+## Part L — Multi-tenant retrieval & isolation
+
+Concept 40 ([Part K](#part-k--vector-databases-in-depth-ann-indexes-metrics-ops--scale)) introduced pre- vs post-filtering and namespaces/collections as a
+*correctness* feature; [Part I](#part-i--retrieved-text-is-untrusted-data-indirect-prompt-injection-in-rag) established that **retrieved text is untrusted**. This Part
+fuses the two and turns the pre-filter into a **security boundary**: when one index serves many
+customers (**multi-tenancy** — multiple independent tenants sharing one system and one store),
+returning the wrong tenant's chunk isn't a relevance miss, it's a data breach. It **deepens**
+concept 40's pre-filter into the row-level enforcement mechanism and reuses concept 10's
+`retrieve()` interface and the [Part K](#part-k--vector-databases-in-depth-ann-indexes-metrics-ops--scale) `pgvector`/Qdrant code. It does **not** re-cover ANN
+index internals (concepts 35–38) or how to *build* an authentication system — you **consume** an
+already-verified identity from the layer above and enforce isolation on top of it.
+
+Picture a shared office filing cabinet. Every drawer has a keycard reader; each drawer is one
+tenant's documents, and a chunk's `tenant_id` is the keycard that opens its drawer. "The most
+relevant document in the building" is a meaningless — and dangerous — notion if it sits in a drawer
+this user's card doesn't open. Retrieval that ranks the whole cabinet and *then* checks keycards
+has already taken the document out and laid it on the table before noticing it belongs to someone
+else. Isolation means the search only ever looks inside the drawers this card opens.
+
+**49. "Relevant" and "allowed" are two different axes — and vector search only optimizes the first.**
+In a shared RAG system every chunk belongs to *someone*. Ranking answers one question — *which chunk
+is most similar to the query?* — and says nothing about *which chunk this caller is permitted to
+see*. The naive retriever from concept 10 optimizes relevance alone:
+```python
+ranked = sorted(store, key=lambda c: cosine(qv, c["vector"]), reverse=True)
+return ranked[:k]      # the globally-best chunks — regardless of who owns them
+```
+That `sorted(...)[:k]` is blind to ownership: if tenant B happens to own the chunk most similar to
+tenant A's query, this code hands B's chunk to A, ranked #1, with full confidence. Relevance and
+permission are **orthogonal**, and a system that only computes relevance will cheerfully serve a
+perfectly-relevant chunk that the caller was never allowed to read. The fix isn't a smarter ranker —
+it's to **restrict the candidate set to owned chunks first, then rank within it.** That restriction
+is concept 40's pre-filter, now load-bearing for *security*, not just for top-k quality.
+- *Build consequence:* Treat isolation as a **filtering** problem decided *before* ranking, never as
+  a ranking problem you hope sorts the right tenant to the top. Ranking is for relevance; a hard
+  scope is for permission, and the scope runs first.
+
+**50. Enforce isolation with a `tenant_id` pre-filter, tagged at index time as mandatory metadata.**
+Make `tenant_id` a required field on every chunk when you index it (concept 8's metadata rule: you
+can't reconstruct it later). Then scope **every** query by ANDing that `tenant_id` into candidate
+selection *before* the nearest-neighbour search ranks anything — the row-level twin of [Part K](#part-k--vector-databases-in-depth-ann-indexes-metrics-ops--scale)'s
+per-tenant **namespace/collection** (a hard *physical* split of the index per tenant; the pre-filter
+is the *logical* split within a shared index). Pre-filter is the only correct choice, and it's worth
+seeing *why* post-filtering fails on both axes at once.
+
+**The trap, hand-checkable.** A shared index holds **1000 chunks**. Tenant A owns **10** of them;
+tenant B owns the other 990. A query comes in from tenant A whose true best match — by cosine — is a
+chunk owned by **tenant B** (B's corpus is bigger, so the globally-most-similar chunk is very likely
+B's). Now compare the two orderings of *filter* and *rank*:
+
+| Step | Post-filter (rank, then check) | Pre-filter (check, then rank) |
+|------|--------------------------------|-------------------------------|
+| Candidate set | ANN returns global top-50 — dominated by B's 990 chunks; maybe 0–1 of A's 10 appear | search restricted to A's 10 chunks only |
+| B's chunk | sits at rank #1 — it entered the candidate pool the reranker, the model, and your logs all see | never enters the pool; structurally invisible to A |
+| After filtering | drop the ~49 non-A chunks → **top-k starved to 1 or 0** in-scope results | full top-k drawn from A's 10 — correct *and* isolated |
+| Outcome | A's *real* best chunk may never have been a candidate; B's chunk **leaked** into the pipeline | A gets its best in-scope chunk; B's data was never touched |
+
+Post-filtering loses **twice**: it *starves* A's top-k (the filter throws away most of what ANN
+returned, often leaving fewer than `k`), **and** it *leaks* — B's chunk was already pulled into the
+candidate pool that your reranker scores, your model reads, and your traces log, even if a final
+`if owner == A` line drops it before the HTTP response. The leak happened the moment B's chunk was
+retrieved; deleting it late doesn't un-retrieve it. Pre-filtering never has the problem because B's
+990 chunks are excluded from the search space *before* ranking — exactly concept 40's lesson, now
+with a security price tag.
+
+Two ways to write the pre-filter, store-neutral (same idea, different vocabulary — concept 45's
+"learn it once, rename the knobs"):
+```python
+# pgvector — tenant_id ANDed into the SQL WHERE, so the planner restricts the scan BEFORE ranking
+def retrieve(question, tenant_id, k=4):
+    if not tenant_id:                       # fail-closed (concept 51): no scope -> refuse, never run unscoped
+        raise PermissionError("retrieve() requires a tenant_id; refusing to run an unscoped search")
+    qv = normalize(embed(question))
+    return conn.execute(
+        """
+        SELECT text, embedding <=> %s AS distance
+        FROM chunks
+        WHERE tenant_id = %s              -- pre-filter: candidate set is THIS tenant's chunks only
+        ORDER BY embedding <=> %s
+        LIMIT %s
+        """,
+        (qv, tenant_id, qv, k),
+    ).fetchall()
+```
+```python
+# Qdrant — a payload filter applied server-side during the search (or a per-tenant collection)
+hits = client.query_points(
+    collection_name="chunks",
+    query=normalize(embed(question)),
+    query_filter=models.Filter(           # pre-filter: restricts the ANN traversal, not a post-pass
+        must=[models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id))]
+    ),
+    limit=k,
+).points
+# Stronger still: a separate collection per tenant — a physical namespace that *cannot* see others.
+```
+- *Build consequence:* `retrieve(question)` becomes `retrieve(question, tenant_id)` with `tenant_id`
+  **non-optional**, ANDed into candidate selection before ranking, and missing/empty → fail-closed
+  (refuse the call) rather than silently running an unscoped search across all tenants.
+
+**51. Derive `tenant_id` from the authenticated session, never the request body — and prove isolation with a test.**
+The pre-filter is only as trustworthy as the `tenant_id` you feed it. Read it from the **verified
+auth context** (the session/token your auth layer already validated), never from anything the caller
+can set:
+```python
+# BAD — trusts a value the client supplies: an IDOR. Attacker sends tenant_id="victim" and reads their docs.
+tenant_id = request.json["tenant_id"]            # caller-controlled -> not a boundary at all
+
+# GOOD — derived from the verified session; the caller cannot forge or override it.
+tenant_id = session.user.tenant_id               # set by your auth layer, not by the request body
+```
+Trusting `body['tenant_id']` is an **IDOR** (Insecure Direct Object Reference — letting a caller
+reach another's data just by naming its identifier); the whole pre-filter is worthless if the filter
+value itself is attacker-controlled. Two more rules complete the defense:
+- **Fail-closed** (when scope is missing or ambiguous, **refuse** rather than proceed — the opposite
+  of fail-open, which would run the query unscoped). A request with no resolvable tenant must error,
+  not fall back to searching everything.
+- **Prove it with an automated test.** "I didn't see a leak in manual testing" is not isolation — a
+  cross-tenant leak is exactly the bug that hides until the one query whose global best match belongs
+  to another tenant. Index docs for A and B where **B owns the globally-most-similar chunk** to A's
+  query, then assert `retrieve(query, tenant_id="A")` **never** returns a B chunk and **still**
+  returns A's best in-scope chunk — plus a negative test that a missing/empty `tenant_id` **refuses**
+  rather than running unscoped. This is defense in depth: index-time mandatory tag → pre-filter →
+  session-derived scope → fail-closed → a test that fails loudly the day someone regresses any layer.
+- *Build consequence:* The `tenant_id` parameter to `retrieve()` is populated **server-side from the
+  session**, and a passing **proof-of-isolation test** is part of the Definition of Done for any
+  multi-tenant retrieval path — isolation you haven't tested is isolation you don't have.
+
+> **Anti-pattern, named.** Treating isolation as a **ranking** problem ("the right tenant's chunks
+> will sort to the top anyway") or accepting **post-filtering as good enough** ("we drop the other
+> tenant's results before responding"). Both leak: ranking never guarantees scope, and post-filtering
+> pulls foreign chunks into the reranker/model/logs *before* you drop them. Isolation is a hard
+> pre-filter on a session-derived scope, or it isn't isolation.
+
+---
+
 **Resources**
 - Anthropic — *Contextual Retrieval* post (chunking + the embed/BM25 hybrid that reduced retrieval
   failures); Anthropic embeddings / Voyage docs.
@@ -1071,6 +1207,17 @@ ties them together:
     chunks) and **prove it scopes results** — run the same query with two different filter values and
     show each returns only in-scope chunks, never the other's. Write **one sentence** on the `ef_search`
     knee you found.
+16. **Multi-tenant isolation + proof-of-isolation test ([Part L](#part-l--multi-tenant-retrieval--isolation)):** extend the brute-force store
+    from [Part C](#part-c--the-retrieval-pipeline-chunking--index--search) (and the pgvector/Qdrant variant from [Part K](#part-k--vector-databases-in-depth-ann-indexes-metrics-ops--scale)) so every chunk carries a
+    `tenant_id`, and change `retrieve()` to `retrieve(question, tenant_id)` that **ANDs `tenant_id`
+    into candidate selection *before* ranking**. Index docs for **two tenants A and B** such that
+    **B owns the chunk that is the globally-most-similar to a chosen A query**. Then write the
+    **proof-of-isolation test**: assert `retrieve(query, tenant_id="A")` (a) **never** returns any of
+    B's chunks and (b) **still** returns A's best in-scope chunk. Add a **negative test**: call
+    `retrieve(query, tenant_id="")` (missing scope) and assert it **refuses** (raises) rather than
+    running an unscoped search. Finally show the **bad-vs-good source**: derive `tenant_id` from the
+    session, and demonstrate that taking it from `request.json["tenant_id"]` (an IDOR) lets a caller
+    read the other tenant's docs.
 
 **Questions**
 
@@ -1083,6 +1230,8 @@ ties them together:
 6. Why must the query and the documents be embedded with the same model?
 7. What are the two halves of a RAG system, and which one is the usual culprit when answers are
    bad?
+18. In a multi-tenant RAG system, "relevant" and "allowed" are two different axes. What does plain
+    `sorted(store, key=cosine)[:k]` optimize, and what does it ignore?
 
 *Apply it*
 8. A user searches for the exact error code `ERR_5021` and pure semantic search returns nothing
@@ -1094,6 +1243,9 @@ ties them together:
 11. Why is `temperature=0` the usual choice for grounded Q&A?
 12. In a multi-turn chat RAG bot, a user asks "what about the refund window for that one?"
     Retrieval returns garbage. What pre-search step is missing?
+19. A multi-tenant retriever does the ANN search across the whole shared index, then drops any
+    result not owned by the caller before returning (post-filtering). Name the two distinct ways this
+    fails, and say which one is a security problem.
 
 *Stretch*
 13. Without abstention licensing, describe the exact failure that happens when retrieval misses —
@@ -1108,6 +1260,9 @@ ties them together:
 17. A teammate wants to switch from `text-embedding-3-small` to a higher-scoring embedding model by
     just changing the model name in the embed call and re-deploying. Why is that wrong, and what does
     the switch actually require?
+20. A teammate's multi-tenant `retrieve()` reads `tenant_id` from the request body so the frontend
+    "can pass whichever tenant it's showing." Explain the vulnerability by name, where `tenant_id`
+    must come from instead, and how you'd *prove* the fix holds rather than eyeballing it.
 
 **Answer key**
 1. Parametric memory (frozen in weights) + context memory (the window). RAG adds knowledge via
@@ -1152,6 +1307,23 @@ ties them together:
     index/collection, re-embed the entire corpus with the new model, evaluate it against your eval set,
     then cut over (keeping the old index until you're confident). Version the embeddings so old and new
     can run side by side.
+18. It optimizes **relevance** — which chunk's vector is most similar to the query — and ignores
+    **permission** (ownership/scope): which chunk the caller is *allowed* to see. The sort is blind to
+    `tenant_id`, so it will return another tenant's chunk if that chunk is the globally-best match.
+19. (a) It **starves** the top-k: the global ANN candidates are dominated by other tenants, so after
+    dropping them you're often left with fewer than `k` (or zero) in-scope results, and the caller's
+    real best chunk may never have been a candidate. (b) It **leaks**: the foreign chunk entered the
+    candidate pool the reranker scores, the model reads, and your logs record *before* you dropped it
+    — the leak already happened. The leak is the security problem; the starvation is a correctness
+    problem. Pre-filtering avoids both.
+20. It's an **IDOR** (Insecure Direct Object Reference) — a caller can read another tenant's data just
+    by naming its `tenant_id`, so the pre-filter is worthless because its filter value is
+    attacker-controlled. `tenant_id` must come from the **verified auth context** (the
+    session/token), never the request body, and missing scope must **fail-closed** (refuse), not run
+    unscoped. Prove it with an automated **proof-of-isolation test**: index docs for A and B where B
+    owns the globally-most-similar chunk to A's query, then assert `retrieve(query, "A")` never returns
+    B's chunks and still returns A's best in-scope chunk, plus a negative test that an empty/missing
+    `tenant_id` raises rather than searching everything.
 
 **Deliverable:** a working `chat-with-your-docs` script: index a real doc set, `retrieve()` +
 `answer()` with citations and abstention, plus a 10-pair mini-eval reporting hit-rate@4 for two
