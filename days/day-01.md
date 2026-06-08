@@ -2,27 +2,42 @@
 
 > [All days](README.md) · [Day 2 →](day-02.md)
 
-**Today's chapter:** [Chapter 1 — Foundations: How LLMs Actually Work](../chapters/01-foundations.md)  
-**Sections:** Session 1  
-**Time:** ~2–3 hrs
+**Module:** Foundations  ·  **Time:** ~2–3 hrs
 
-## Goal
-Build the one mental model the rest of the course leans on: what an LLM is doing when it produces text.
+---
 
-## Why today matters
-Every later decision — prompt, RAG, agent, eval — is downstream of understanding tokens, prediction, and context. Get this right and the rest reads as obvious.
+### Session 1 — Watch the foundation video
 
-## Study
-Work through these sections:
+**Goal:** Get the full mental model of how LLMs work, end to end. Exposure, not mastery —
+we go back and deepen each section on later days.
 
+**Task:** Watch the whole video, start to finish.
+- **Title:** *Deep Dive into LLMs like ChatGPT* — Andrej Karpathy
+- **Link:** https://www.youtube.com/watch?v=7xTGNNLPyMI
+- **Length:** ~3.5 hours (a full day's commitment; one pass is fine)
 
-## Hands-on
-Watch the foundation video end-to-end and take notes; you'll reference it all week.
+**What the video covers** (this is the spine of this chapter (Foundations)):
 
-Full tasks: [Hands-on for this chapter](../chapters/01-foundations.md#hands-on-free-web-uis-no-api-keys-needed).
+| # | Sub-topic | Video segment |
+|---|-----------|---------------|
+| 1.1 | The Big Picture — what's behind the text box, "predict the next token" | 0:00–1:02 |
+| 1.2 | Pretraining & Data — crawling the internet, filtering, FineWeb, 15T tokens | 1:02–7:51 |
+| 1.3 | Tokenization — bytes → BPE → ~100k vocab; why models see tokens, not letters | 7:51–14:28 (revisited 2:01:13) |
+| 1.4 | The Neural Network — inputs/outputs, the Transformer, parameters, attention | 14:28–26:02 |
+| 1.5 | Inference — sampling, stochasticity, temperature | 26:02–31:12 |
+| 1.6 | The Base Model — GPT-2 vs Llama 3.1, internet simulator, in-context learning | 31:12–59:28 |
+| 1.7 | Post-Training → Assistant (SFT) — conversation data, human labelers | 59:28–1:20:33 |
+| 1.8 | LLM Psychology — hallucinations, tool use, "models need tokens to think," jagged intelligence | 1:20:33–2:07:25 |
+| 1.9 | Reinforcement Learning — reasoning models, DeepSeek-R1, AlphaGo, RLHF | 2:07:25–3:09:38 |
+| 1.10 | Mental Model & Practical Use — grand summary, Swiss-cheese capabilities, use as a tool | 3:09:38–end |
 
-## End-of-day self-test
-Test yourself before tomorrow. These come from a bank of real Gen-AI interview questions; the answers are in today's chapter — *peek only after attempting.*
+**Deliverable:** None to produce. Optional: jot down "things I didn't get" — it makes the
+deeper days easier.
+
+---
+
+## Interview drill (self-test)
+Real Gen-AI interview questions on today's material — *answer from memory, then check against what you just read.*
 
 1. Will LSTM work on RNN?
 2. Explain backpropagation.
@@ -40,7 +55,7 @@ Test yourself before tomorrow. These come from a bank of real Gen-AI interview q
 14. How can we avoid vanishing gradients?
 15. What are common machine learning models?
 
-_(90 topic-matched questions in the bank; 15 shown. See [`ai-eng-questions.md`](../ai-eng-questions.md) for the rest.)_
+_(89 matched; 15 shown — more in [`ai-eng-questions.md`](../ai-eng-questions.md).)_
 
 ## Daily update
 Send your one-liner: what you covered, what clicked, what's still fuzzy.
