@@ -50,7 +50,7 @@ later chapters.
 | 9 | [Orchestration with Airflow](chapters/09-orchestration-airflow.md) | DAGs, scheduling, dependencies, retries/backfills, idempotent tasks, sensors |
 | 10 | [Warehousing & Serving](chapters/10-warehousing-serving.md) | Snowflake (tasks/streams, SCD2, COPY from cloud storage), BigQuery/Redshift, serving layers |
 | 11 | [Data Quality & Reliability](chapters/11-data-quality.md) | tests, SLAs/SLOs, data contracts, observability, freshness, the DataOps loop |
-| 12 | Capstone Project | _to be planned_ |
+| 12 | [Capstone Project](chapters/12-capstone.md) | end-to-end pipeline tying every chapter together |
 
 ## Chapters
 
@@ -65,7 +65,7 @@ later chapters.
 9. [Orchestration with Airflow: scheduling the whole graph](chapters/09-orchestration-airflow.md)
 10. [Warehousing & serving: where the data lands for use](chapters/10-warehousing-serving.md)
 11. [Data quality & reliability: shipping pipelines with confidence](chapters/11-data-quality.md)
-12. Capstone Project _(to be planned)_
+12. [Capstone Project: an end-to-end pipeline](chapters/12-capstone.md)
 
 ### Advanced & Production Track
 
@@ -116,18 +116,19 @@ alongside the Capstone).
 > **v1 (current cohort):** append as below. **v2 (next cohort):** interleave at the *ideal slot* so
 > performance tuning follows Spark and governance precedes serving.
 
-> **Status:** the spine and question bank are the first build wave (marked 🔨 = next to author,
-> ⬜ = planned). Nothing is drafted yet — this outline defines the target.
+> **Status:** the question bank, all 11 core chapters, the Capstone, and all 5 Advanced-Track
+> chapters are **drafted** (✅) at fresher level on the default stack, with verified runnable
+> hands-on. The per-chapter grafts (⬜) and the day reflow remain to do.
 
 ### New chapters — Advanced & Production Track
 
 | Topic | Scope | v2 ideal slot |
 |-------|-------|---------------|
-| ⬜ Performance & Cost Engineering | Spark tuning at scale (AQE, broadcast thresholds, partition sizing, skew/spill diagnosis from the Spark UI); cluster sizing & autoscaling; photon/runtime choices; Delta layout (OPTIMIZE, Z-ORDER, liquid clustering, file compaction); cost attribution & FinOps for data platforms | after [Chapter 4](chapters/04-spark.md) |
-| ⬜ Architecture & System Design | lakehouse vs warehouse vs lake; batch + streaming together (Lambda vs Kappa); the medallion as architecture; data mesh vs centralized platform; choosing storage/compute/serving for a workload; the compound-pipeline framing (sources + ingest + transform + serve + orchestration, not one big job) | between [Chapter 5](chapters/05-databricks-delta.md) and [Chapter 10](chapters/10-warehousing-serving.md) |
-| ⬜ Security, Privacy & Governance | RBAC & data access control; PII handling, masking & row/column-level security; encryption at rest/in transit; the catalog as governance (Unity Catalog, lineage, audit); GDPR/right-to-be-forgotten in a data lake; compliance (HIPAA/SOC2) for data platforms; a written data threat model | before [Chapter 10](chapters/10-warehousing-serving.md) |
-| ⬜ Cloud Data Platforms — Azure / AWS / GCP | the hyperscaler data menu side-by-side: Azure (ADF, Synapse, Fabric, ADLS) — the default; AWS (Glue, EMR, Redshift, S3, Athena); GCP (BigQuery, Dataflow, Dataproc, GCS); managed-vs-self-host; serverless data economics (does it cost when idle?); reading the catalogs | after [Chapter 10](chapters/10-warehousing-serving.md) |
-| ⬜ DataOps, CI/CD & Infrastructure-as-Code | testing pipelines (unit/integration/data tests); CI/CD for dbt & Spark jobs; environment promotion (dev→staging→prod); IaC (Terraform) for data infra; deployment, blue/green for data; monitoring, alerting & on-call for pipelines; the incident loop | between Architecture & Capstone |
+| ✅ [Performance & Cost Engineering](chapters/adv-performance-cost.md) | measure-first tuning; the four Spark bottlenecks & levers; Delta layout (OPTIMIZE/Z-ORDER/compaction); cluster sizing, autoscale, scale-to-zero; scan-less; FinOps cost attribution | after [Chapter 4](chapters/04-spark.md) |
+| ✅ [Architecture & System Design](chapters/adv-architecture-system-design.md) | design from requirements; lakehouse vs warehouse vs both; batch + streaming (Lambda vs Kappa); medallion-as-architecture; data mesh vs centralized; compound-system thinking; naming trade-offs | between [Chapter 5](chapters/05-databricks-delta.md) and [Chapter 10](chapters/10-warehousing-serving.md) |
+| ✅ [Security, Privacy & Governance](chapters/adv-security-privacy-governance.md) | RBAC & row/column access; PII/PHI classify+mask (dynamic vs static); encryption + key/secret hygiene; lineage & cataloging; audit + GDPR deletion fan-out; regulation-as-engineering | before [Chapter 10](chapters/10-warehousing-serving.md) |
+| ✅ [Cloud Data Platforms — Azure / AWS / GCP](chapters/adv-cloud-platforms.md) | the lifecycle→service map across three clouds; consume vs host; serverless economics (cost when idle?); Azure-first spine; one pipeline across clouds; lock-in & migrations | after [Chapter 10](chapters/10-warehousing-serving.md) |
+| ✅ [DataOps, CI/CD & Infrastructure-as-Code](chapters/adv-dataops-cicd.md) | DataOps mindset; dev→staging→prod environments; unit/data/integration tests; CI/CD + slim CI; IaC (Terraform); the monitor→incident→improve loop | between Architecture & Capstone |
 
 ### Grafts into existing chapters (additive Parts, no renumbering)
 
@@ -150,13 +151,14 @@ alongside the Capstone).
 
 Legend: ✅ drafted · 🔨 next to author · ⬜ planned.
 
-1. 🔨 **`data-eng-questions.md`** — the deduped, conversation-grouped question bank from the 2,814
+1. ✅ **`data-eng-questions.md`** — the deduped, conversation-grouped question bank from the 2,814
    data-eng rows. Built first because every chapter's drill and depth calibration keys off it.
-2. 🔨 **Core spine, chapters 1–11** — authored in reading order, each on the default stack
-   (Databricks/Spark/Delta + Azure), with alternatives side-by-side.
-3. ⬜ **Day reflow** — reflow the spine into day-sized files (`days/`) like the AI plan, ~30–35 days,
-   each core day ending with a 15-question drill.
-4. ⬜ **Capstone** — end-to-end pipeline: ingest → medallion transform in Spark/Delta → orchestrate
+2. ✅ **Core spine, chapters 1–11** — authored in reading order, each on the default stack
+   (Databricks/Spark/Delta + Azure), with alternatives side-by-side and verified hands-on.
+3. ✅ **Capstone** — end-to-end pipeline: ingest → medallion transform in Spark/Delta → orchestrate
    with Airflow → serve in a warehouse, with quality gates throughout.
-5. ⬜ **Advanced & Production Track** + grafts — performance/cost, architecture, security/governance,
-   cloud platforms, DataOps/CI/CD.
+4. ✅ **Advanced & Production Track** — performance/cost, architecture, security/governance,
+   cloud platforms, DataOps/CI/CD (all 5 drafted).
+5. ⬜ **Day reflow** — reflow the spine into day-sized files (`days/`) like the AI plan, ~30–35 days,
+   each core day ending with a 15-question drill.
+6. ⬜ **Per-chapter grafts** — the additive Parts in the table above.
