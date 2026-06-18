@@ -6,9 +6,15 @@ A top-down program for the team to learn modern data engineering — start from 
 
 ## Who this is for
 
-We are training engineers to **build and operate data platforms** — to design pipelines that move,
-transform, store, and serve data reliably **on top of** managed engines and warehouses — **not** to
-build a query optimizer, a distributed scheduler, or a storage engine from scratch.
+**The reader is a near-fresher who knows Python and not much else.** We assume you can write a
+function, use lists and dicts, loop over things, and read a file. We do **not** assume you know
+SQL, databases, the cloud, distributed systems, or what a "data warehouse" is. Every term is
+defined the first time it appears, every new idea is anchored to Python you already know, and the
+ramp is deliberately slow. Where something is taught later, we say so instead of assuming it.
+
+We are training these engineers to **build and operate data platforms** — to design pipelines that
+move, transform, store, and serve data reliably **on top of** managed engines and warehouses —
+**not** to build a query optimizer, a distributed scheduler, or a storage engine from scratch.
 
 That sets the depth: internals (how Spark plans a shuffle, how a columnar file is laid out, how a
 warehouse prunes partitions) are covered only deep enough to make good engineering decisions and to

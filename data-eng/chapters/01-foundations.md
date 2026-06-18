@@ -3,201 +3,288 @@
 **Goal:** Build a precise, working mental model of what data engineering *is* — the stages a
 piece of data moves through, the concerns that ride alongside every stage, and the handful of
 ideas that actually change how you design and debug a pipeline. By the end you should be able to
-explain, to a teammate, *why* a pipeline is shaped the way it is and what that forces you to do
-as a builder.
+explain, to a friend, *why* a pipeline is shaped the way it is and what that forces you to do as
+a builder.
+
+**What we assume you know:** Python — functions, lists, dicts, loops, reading a file. **That's
+it.** You do *not* need to know SQL, databases, the cloud, or what a "data warehouse" is. Every
+new word is defined the first time it shows up, and new ideas are tied back to Python you already
+know. If something gets a fuller treatment later, we'll say so rather than assume it.
 
 **Why this matters:** Most outages and bad design choices in data platforms come from a wrong
-mental model — treating a pipeline like a one-shot script, ignoring that it will re-run, or
-storing analytical data the way you'd store transactional data. Get these eight ideas right and
-most of the later material (Spark, Delta, modeling, orchestration, quality) becomes obvious
-instead of mysterious.
+mental model — treating a pipeline like a one-shot script, ignoring that it will run again and
+again, or storing data for analysis the same way you'd store it for an app. Get these eight ideas
+right and the rest of the course (SQL, Spark, Delta, modeling, orchestration, quality) becomes
+obvious instead of mysterious.
 
-> **Setup assumed:** none yet. This chapter is concepts plus free hands-on (SQL in the browser,
-> or a local DuckDB/Postgres). The default stack we build on for the rest of the course —
-> **Databricks + Apache Spark + Delta Lake on Azure** — gets stood up in Chapter 4 onward.
+> **Setup assumed:** none. This chapter is concepts plus a small hands-on you run in Python. The
+> default stack we build on later — **Databricks + Apache Spark + Delta Lake on Azure** — gets
+> stood up from Chapter 4 onward. For now, a laptop with Python is enough.
 
 **Suggested split across two working sessions:**
 - **Session 1** — concepts 1–4: what data engineering is, the lifecycle, the undercurrents, and
-  the two reliability/latency ideas (idempotency, batch vs streaming).
-- **Session 2** — concepts 5–8: the storage and transformation decisions (ETL/ELT, OLTP/OLAP,
-  the lakehouse, the schema tax) + the hands-on and questions.
+  the two big ideas (idempotency, batch vs streaming).
+- **Session 2** — concepts 5–8: where and how data is stored and transformed (ETL/ELT, the two
+  kinds of database, the lakehouse, the schema tax) + the hands-on and questions.
 
 Everything you need is taught right here — there's no book or video to go watch first.
+
+---
+
+### Start here: what *is* data engineering, in Python terms?
+
+You have almost certainly already written a tiny data pipeline without calling it that. Picture a
+script like this:
+
+    rows = read_csv("sales.csv")          # 1. get the data
+    clean = [r for r in rows if r.ok]     # 2. clean / reshape it
+    totals = summarize(clean)             # 3. compute something useful
+    write_csv("report.csv", totals)       # 4. put the result somewhere
+
+That's the whole job in miniature: **get data from somewhere, reshape it, and put the result
+somewhere useful.** Data engineering is what this becomes when the CSV is 2 billion rows instead
+of 2,000, when it has to run automatically every night instead of when you press play, when five
+other people depend on the output, and when "it crashed halfway" can't be allowed to corrupt the
+result. Everything in this chapter is about what changes as you scale that four-line script up to
+something a company runs on.
 
 ---
 
 #### Core concepts
 
 **1. The data engineering lifecycle is the spine: generation → ingestion → transformation → storage → serving.**
-Every pipeline you ever build is some path through five stages. Data is *generated* by a source
-(an app's OLTP database, an API, a sensor, a log). You *ingest* it (pull or receive it). You
-*transform* it (clean, join, aggregate, model). It lives in *storage* (a lake, a warehouse). And
-you *serve* it to a consumer (a dashboard, an ML model, a reverse-ETL sync). Storage isn't a
-single stage so much as the substrate the other four sit on top of.
-- *Build consequence:* When you're handed a vague request ("we need a sales dashboard"), your
-  first move is to locate it on the lifecycle: what's the *source*, how does data get *in*, what
-  *transformation* makes it usable, where does it *land*, who *serves* from it? Naming the five
-  stages turns a fuzzy ask into a concrete pipeline design.
+Think of the four-line script above, but named properly. Every pipeline you ever build is some
+path through five stages:
+  - **Generation** — data is *created* by a source: an app's database, an API, a sensor, a log
+    file. (You don't usually control this — it's someone else's system.)
+  - **Ingestion** — you *get the data in* (pull it on a schedule, or receive it as it's produced).
+    This is `read_csv` in the toy script.
+  - **Transformation** — you *reshape it*: clean it, join it, aggregate it, model it. The list
+    comprehension and `summarize`.
+  - **Storage** — where the data *lives* along the way. The CSVs on disk; later, a lake or a
+    warehouse.
+  - **Serving** — handing the finished data to whoever *uses* it: a chart, a report, a machine-
+    learning model. The `write_csv`.
+
+Storage isn't really a fifth step in a line — it's the substrate the other four sit on top of, the
+way a hard drive underlies every step of your script.
+- *Build consequence:* When someone hands you a vague request ("we need a sales dashboard"), your
+  first move is to place it on the lifecycle: what's the *source*? how does data get *in*? what
+  *transformation* makes it useful? where does it *land*? who *serves* from it? Naming the five
+  stages turns a fuzzy ask into a concrete plan you can start building.
 
 **2. The undercurrents ride alongside every stage — they're not a final step.**
-Five concerns cut across the whole lifecycle: **security** (who can see what), **data
-management** (governance, quality, lineage, metadata), **DataOps** (monitoring, automation,
-incident response), **orchestration** (scheduling the graph of tasks), and **software
-engineering** (version control, testing, IaC). The classic beginner mistake is treating these as
-"things we'll add later."
-- *Build consequence:* You design for these from the first commit, not after the first incident.
-  "Where do credentials come from? How will I know when this breaks? Is this task safe to
-  re-run?" are questions you answer while building, not during the postmortem.
+Five concerns run underneath the *whole* lifecycle, not at the end of it:
+  - **Security** — who is allowed to see this data?
+  - **Data management** — governance, quality, and *lineage* (knowing where each number came
+    from) and *metadata* (data describing your data).
+  - **DataOps** — keeping it running: monitoring, alerts, and what you do at 3 a.m. when it breaks.
+  - **Orchestration** — scheduling the steps in the right order (we use a tool called Airflow,
+    Chapter 9).
+  - **Software engineering** — the basics you already value in Python: version control, tests,
+    not hard-coding secrets.
 
-**3. A pipeline re-runs — so it must be idempotent.** *(The most important reliability idea today.)*
-A batch pipeline is not a one-shot script; it runs on a schedule, gets backfilled, retries after
-failures, and gets re-triggered when someone fixes a bug upstream. **Idempotent** means: running
-the same task twice produces the same end state as running it once — no duplicate rows, no
-double-counted revenue, no drift.
+The classic beginner mistake is treating these as "stuff we'll add later."
+- *Build consequence:* You think about these from the first line of code, not after the first
+  incident. "Where does the password come from? How will I know if this breaks tonight? Is it safe
+  to run twice?" are design questions, not cleanup chores.
 
-Concretely, the non-idempotent way and the idempotent way to load one day of data:
+**3. A pipeline runs again and again — so it must be idempotent.** *(The most important reliability idea today.)*
+Your `report.csv` script runs when you press play. A real pipeline runs *on a schedule* (every
+night), gets *re-run* to fix a bug, and gets *retried automatically* when it fails partway. So the
+key question becomes: **what happens if this runs twice?**
 
-    -- NOT idempotent: re-running appends the same rows again → duplicates
-    INSERT INTO sales SELECT * FROM staging WHERE day = '2026-06-18';
+You already know this distinction from Python. Compare two ways of recording a value:
 
-    -- Idempotent: re-running overwrites just that day → same end state every time
-    DELETE FROM sales WHERE day = '2026-06-18';
-    INSERT INTO sales SELECT * FROM staging WHERE day = '2026-06-18';
-    -- (or a single MERGE on a key; or partition-overwrite)
+    results = []
+    results.append(row)     # run this twice → the row is in there TWICE
 
-- *Build consequence:* Design every task so re-running it is safe. The two workhorse patterns are
-  **MERGE/upsert on a key** and **partition overwrite** (replace a whole day/partition rather
-  than append into it). If you can't safely re-run a task, you don't have a pipeline — you have a
-  time bomb that goes off on the first retry.
+    seen = {}
+    seen[key] = row         # run this twice → same result, the row is in there ONCE
 
-**4. Batch vs streaming is bounded vs unbounded data — and batch is the default.**
-*Batch* processes a finite chunk of data on a schedule (every hour, every night): bounded input,
-known size, you can see the whole thing. *Streaming* processes an unbounded, never-ending feed of
-events as they arrive: you never see "all" the data, only a window of it. Streaming buys you
-*latency* (seconds instead of hours) and costs you *complexity* (out-of-order events, late
-arrivals, exactly-once semantics, always-on infrastructure).
+`append` is *not* safe to repeat; assigning to a dict key *is*. **Idempotent** is just the fancy
+word for "safe to run more than once" — running a task twice leaves you in the same state as
+running it once. No duplicate rows, no revenue counted twice.
 
-A quick way to size the choice — what's the *cost of staleness*?
+Here's the same trap when writing data out (don't worry about the exact syntax yet — read the
+comments):
 
-    If the consumer is fine with data that's an hour old → batch. (Almost everything.)
-    If a minute of staleness costs money or safety       → consider micro-batch / streaming.
-    If you "want it real-time" but can't name the cost   → you want batch. Build batch.
+    # NOT idempotent: running tonight's job twice appends the same day's rows twice → duplicates
+    append_rows(target, todays_rows)
 
-- *Build consequence:* Default to batch. Reach for streaming only when a *named* requirement
-  forces it (fraud blocking, live ops, real-time personalization) — and budget for the operational
-  weight that comes with it. "Real-time" is a requirement to justify, not a free upgrade.
+    # Idempotent: replace today's slice, so a re-run lands on the same result every time
+    delete_rows(target, day="2026-06-18")
+    insert_rows(target, todays_rows)
 
-**5. ETL vs ELT — where you transform, and why ELT won.**
-Both move data from source to a destination; they differ on *when* transformation happens.
-  - **ETL (Extract → Transform → Load):** transform *before* loading, on a separate compute box.
-    The warehouse only ever sees clean, modeled data. This was necessary when storage and
-    warehouse compute were expensive and coupled — you couldn't afford to land raw junk.
-  - **ELT (Extract → Load → Transform):** load *raw* into cheap storage first, then transform
-    *inside* the warehouse/lakehouse using its own compute. You keep the raw data, and
-    transformation is just SQL/Spark against what you already loaded.
+- *Build consequence:* Design every task so re-running it is safe — because the scheduler *will*
+  re-run it. The two workhorse patterns (you'll meet both properly later) are **upsert on a key**
+  (like `seen[key] = row` — update if present, insert if not) and **partition overwrite** (replace
+  a whole day's data instead of adding to it). If a task isn't safe to re-run, it's not a pipeline
+  — it's a bomb that goes off on the first retry.
 
-ELT won for most modern stacks for two structural reasons: **(a) storage got cheap** (object
-storage is ~pennies/GB/month, so keeping raw data is fine), and **(b) compute decoupled from
-storage** (you can throw elastic warehouse/Spark compute at transformation without it being
-"always on"). Keeping the raw layer means you can re-transform when requirements change — you
-didn't throw the source away.
-- *Build consequence:* On the default stack, you build **ELT**: land raw into the **bronze**
-  layer of a lakehouse, then transform forward (bronze → silver → gold) with Spark/dbt. The
-  medallion architecture you meet in Chapter 5 is just ELT with named layers.
+**4. Batch vs streaming is just "a finite list" vs "a never-ending stream."**
+In Python terms: processing a **list** you can see the end of is *batch*; processing an infinite
+**generator** that never stops yielding is *streaming*.
+  - **Batch** — run on a schedule over a finite chunk: "every night, process yesterday's orders."
+    You can see the whole input, it has a known size, and the job ends. This is most of data
+    engineering.
+  - **Streaming** — handle events one at a time, forever, as they happen: "the moment an order is
+    placed, react to it." You never see "all" the data, only what's arrived so far.
 
-**6. OLTP vs OLAP — two opposite workloads, which is *why* we move data at all.**
-This is the single fact that explains why data engineering exists as a discipline.
-  - **OLTP (transactional):** the app's database. Many tiny reads/writes, row-oriented, optimized
-    for "fetch/insert *this one order*." Postgres, MySQL, the operational store.
-  - **OLAP (analytical):** the warehouse/lakehouse. Few huge scans, column-oriented, optimized for
-    "sum revenue across *50 million orders* by region." Snowflake, BigQuery, Databricks SQL.
+Streaming buys you *speed* (react in seconds, not hours) and costs you *complexity* (events arrive
+out of order, some arrive late, and the system must run 24/7). A simple way to choose — ask *what
+does staleness cost?*
 
-Running heavy analytics directly on the OLTP database is the classic sin: a single `GROUP BY`
-over the orders table locks rows, starves the app, and pages the on-call engineer. So we **copy**
-data from OLTP into OLAP-shaped storage — and that copy *is* the ingestion half of the lifecycle.
+    If the user is fine with data up to an hour old        → batch. (Almost everything.)
+    If one minute of old data costs money or safety        → consider streaming.
+    If they "want it real-time" but can't say why          → they want batch. Build batch.
 
-Why columnar wins for OLAP, with hand-checkable numbers. Say a table has 50 columns, 100 GB
-total, evenly sized, and your query touches just 2 of them (`region`, `revenue`):
+- *Build consequence:* Default to batch. Reach for streaming only when a *specific* need forces it
+  (blocking fraud, live operations) — and budget for the extra always-on machinery. "Real-time" is
+  a requirement to justify, never a free upgrade.
 
-    Row store:    reads all 50 columns to get to 2     → ~100 GB scanned
-    Column store: reads only the 2 columns you asked   → ~4 GB scanned   (2/50 of the data)
+**5. ETL vs ELT — do you clean the data before or after you store it?**
+Both just mean "move data from a source to where it'll be used." They differ on *when* you do the
+transform (the cleaning/reshaping):
+  - **ETL = Extract → Transform → Load:** clean it *first*, then store only the tidy result. Like
+    filtering a list before saving it — you never keep the messy original.
+  - **ELT = Extract → Load → Transform:** store the *raw* data first, then clean it afterward. Like
+    saving the original file untouched, then producing tidy versions from it whenever you need.
 
-Same query, ~25× less I/O — before compression, which columnar also does far better because each
-column holds one data type. That's the whole reason analytical stores are columnar.
-- *Build consequence:* Never point a BI dashboard at the production OLTP database. Choose
-  row-oriented stores for transactional apps and column-oriented stores for analytics — and
-  recognize that the gap between them is the job: moving and reshaping data from one world to the
-  other.
+ELT is the modern default for two practical reasons: **storage got dirt cheap** (keeping the raw
+data costs pennies, so why throw it away?), and **you can re-clean later** when requirements change
+— because you still have the original. ETL throws the original away; if you later need a field you
+dropped, it's gone.
+- *Build consequence:* You'll build **ELT**: land the raw data first (a layer we'll call
+  **bronze**), then transform it forward into cleaner layers (**silver**, then **gold**). Keeping
+  the raw layer is your insurance policy — when someone asks for a number you didn't compute the
+  first time, you can go back to the source instead of re-collecting it.
 
-**7. Storage/compute decoupling and the lakehouse — why the modern stack looks like it does.**
-In the old warehouse, storage and compute were welded together: to store more you bought more
-compute, and the cluster ran (and billed) whether or not anyone queried it. The modern pattern
-**separates them**: data sits in cheap object storage (ADLS / S3 / GCS) as open file formats,
-and *independent, elastic* compute (Spark, a serverless SQL warehouse) reads it on demand and
-scales to zero when idle.
-  - **Data lake:** cheap object storage holding raw files. Flexible, but no transactions, no
-    schema enforcement — easy to turn into a "data swamp."
-  - **Data warehouse:** managed, structured, transactional, fast — but historically closed and
-    pricier, and awkward for unstructured data.
-  - **Lakehouse:** the lake's cheap open storage **plus** a transactional table layer (Delta /
-    Iceberg / Hudi) that adds ACID, schema enforcement, and time travel on top of the files. You
-    get warehouse guarantees on lake economics. This is the default stack's home turf.
-- *Build consequence:* "Where does the data live?" has three answers with different trade-offs.
-  Decoupled storage/compute is why you can keep all your raw data cheaply *and* only pay for
-  transformation compute while it runs — and it's why the lakehouse (Chapter 5) is the spine we
-  build on rather than a classic warehouse.
+**6. There are two opposite kinds of database — and the difference is *why this job exists*.**
+First, what's a *database*? It's a separate program whose job is to store data so it survives
+restarts and lets many people read and write it safely at once — more than a Python dict (which
+vanishes when your program ends) and more than a file (which gets corrupted if two programs write
+at once). There are two families, tuned for opposite jobs:
+  - **OLTP — the app's database (transactional).** Handles many tiny reads and writes: "create
+    *this one* order," "look up *this one* user." It's what the website talks to. (Postgres, MySQL.)
+  - **OLAP — the analytics database (analytical).** Handles a few *huge* questions: "total revenue
+    across *all 50 million* orders, grouped by country." This is the warehouse. (Snowflake,
+    BigQuery, Databricks.)
 
-**8. The schema tax is always paid — schema-on-write vs schema-on-read decides when.**
-Structure has to be imposed somewhere. **Schema-on-write** validates and shapes data *as it's
-loaded* (a warehouse rejects a bad row at load time) — strict, safe, but rigid. **Schema-on-read**
-dumps raw data in and imposes structure *when you query it* (a lake reads JSON and parses fields
-at query time) — flexible, but the bill comes due later when a field silently changes type and
-every downstream query breaks. There is no "no schema" option; there's only *when* you pay.
-- *Build consequence:* The medallion pattern is a deliberate answer to this: **bronze** is
-  schema-on-read (land raw, stay flexible, never lose data), **silver/gold** are schema-on-write
-  (enforce types and contracts before anyone builds on them). You pay the schema tax on purpose,
-  at the boundary you choose — not by accident, at 2 a.m. This seeds data modeling (Chapter 2).
+If you run a giant analytics question directly against the app's database, you slow the whole
+website down for real users — the classic rookie mistake. So we *copy* data out of the OLTP
+database into an OLAP one built for big questions. **That copy is literally the ingestion half of
+your job.**
+
+Why the analytics database is built differently — with hand-checkable numbers. Analytics databases
+store data *by column* instead of *by row*. Say a table has 50 columns and is 100 GB total, and
+your question only needs 2 columns (`country`, `revenue`):
+
+    Stored by row:     to read 2 columns you still sweep past all 50  → ~100 GB read
+    Stored by column:  you read only the 2 columns you asked for       → ~4 GB read   (2 of 50)
+
+Same question, ~25× less data read. That's the whole reason analytics databases are "columnar."
+- *Build consequence:* Never point a dashboard at the live app database. Use a row-by-row store
+  for the app, a column store for analytics — and recognize that the gap between those two worlds
+  is exactly the work you're being hired to do: get data from one into the other.
+
+**7. Storage and compute are separated now — and that's what a "lakehouse" is built on.**
+Two words, plainly: **storage** = where the bytes sit (a hard disk, or cloud "object storage" like
+a giant shared folder). **Compute** = the processor doing work on those bytes. Old systems welded
+them together: to store more data you had to rent a bigger always-on machine, and you paid for it
+even when nobody was asking questions. The modern setup **separates** them: data sits in cheap
+cloud storage, and you spin up processing power *only when you need it* and turn it off after. Three
+places analytical data can live:
+  - **Data lake** — a giant cheap folder of raw files. Flexible, but it has no rules: nothing stops
+    bad or duplicate data, so it can rot into a "data swamp."
+  - **Data warehouse** — a strict, fast, organized database. Reliable, but historically pricier and
+    awkward for messy/unstructured data.
+  - **Lakehouse** — the cheap-folder storage of a lake *plus* a rules layer on top (called Delta,
+    Iceberg, or Hudi) that adds reliability and structure. You get the warehouse's guarantees at the
+    lake's price. This is the home of our default stack.
+- *Build consequence:* "Where does the data live?" has three answers with real trade-offs. Because
+  storage and compute are separate, you can keep *all* your raw data cheaply and only pay for
+  processing while it runs — and it's why we build on a lakehouse (Chapter 5) rather than an
+  old-style warehouse.
+
+**8. "Schema" is the agreed shape of your data — and you always pay to enforce it, the only question is when.**
+A **schema** is just the expected shape: which fields exist and what type each is — like a Python
+`dataclass` or "every row is a dict with keys `id` (int), `name` (str), `price` (float)." Real data
+breaks its shape constantly: a price arrives as `"12.00"` (text) instead of `12.0` (number), a
+field goes missing, a new one appears. Someone has to deal with that. You have two moments to do it:
+  - **Schema-on-write** — check and fix the shape *as you store it*. Strict and safe (bad rows get
+    caught immediately), but rigid (the source changes and your loader rejects everything).
+  - **Schema-on-read** — store whatever arrives, sort out the shape *when you read it later*.
+    Flexible (nothing gets rejected), but you've only delayed the pain — a field quietly changes
+    type and every report downstream breaks at once.
+
+There is no "no schema" option. There's only *when you pay.*
+- *Build consequence:* The bronze→silver→gold layering from concept 5 is the deliberate answer:
+  **bronze** uses schema-on-read (take in everything raw, never lose data), and **silver/gold** use
+  schema-on-write (enforce the shape before anyone builds reports on it). You choose to pay the
+  schema tax at a clear boundary — not by accident, at 2 a.m., when a dashboard fills with errors.
+  This sets up data modeling, which is Chapter 2.
 
 ---
 
 #### Resources (optional — the chapter is self-contained)
-- **DuckDB** (free, runs in the browser at shell.duckdb.org or locally) — the SQL playground for
-  the hands-on below; no install or account needed.
-- The free docs pages for the modern stack's vocabulary, read for shape not product pitch:
+- **DuckDB** (free; `pip install duckdb`, or run it in the browser at shell.duckdb.org) — a tiny
+  analytics database you drive *from Python*. It's the playground for the hands-on below; no account
+  or server needed.
+- The free docs pages for the modern stack's vocabulary, skimmed for shape not sales pitch:
   Databricks' "What is a lakehouse?" and dbt's "Analytics Engineering" overview.
-- Skip if you're short on time — none of these are required to do the hands-on or the questions.
+- These are optional — you can finish the whole chapter with just Python installed.
 
 ---
 
-#### Hands-on (free tools, no cloud account needed)
+#### Hands-on (all in Python — `pip install duckdb` and go)
 
-**A. Place a real pipeline on the lifecycle.**
-1. Pick any data product you've seen (a sales dashboard, a "users who bought X" feature, a daily
-   report email). Write one line per lifecycle stage: source → ingestion → transformation →
-   storage → serving.
-2. For each of the five **undercurrents**, write one sentence: what would security / data
-   management / DataOps / orchestration / software engineering look like for *this* pipeline?
+You'll touch SQL here (the language for asking questions of tables). You don't need to know it yet —
+each snippet gives you the exact query string to pass; Chapter 2 teaches SQL properly.
 
-**B. Feel why analytics doesn't belong on OLTP.**
-1. In DuckDB (or Postgres), create a `sales` table and load ~1–5 million synthetic rows (a quick
-   `range()` + random values generator is fine).
-2. Run a heavy analytical query (`SELECT region, SUM(revenue) FROM sales GROUP BY region`) and a
-   tiny transactional one (`SELECT * FROM sales WHERE id = 12345`). Time both.
-3. Write two sentences: which store *shape* (row vs columnar) each query wants, and why running
-   the first one against your app's production DB would be a bad idea.
+**A. Place a real pipeline on the lifecycle (no code).**
+1. Pick any data thing you've seen — a sales dashboard, a "people who bought this" feature, a daily
+   report email. Write one line per stage: source → ingestion → transformation → storage → serving.
+2. For each of the five undercurrents, write one sentence: what would security / data management /
+   DataOps / orchestration / software engineering mean for *this* pipeline?
 
-**C. Make a non-idempotent task, then fix it.**
-1. Write a load step that does `INSERT INTO target SELECT ... WHERE day = '<d>'`. Run it twice.
-   Count the rows — observe the duplicates.
-2. Rewrite it idempotently (delete-then-insert for that day, or a `MERGE` on a key). Run it twice.
-   Confirm the row count is identical to running it once.
-3. Write one sentence on why a scheduler retrying a failed run makes idempotency non-optional.
+**B. Feel why analytics needs a different database.**
 
-**D. Batch vs streaming — name the cost of staleness.**
-1. For three scenarios — a nightly finance report, a fraud-blocking check at checkout, a "trending
-   products" widget — decide batch vs streaming.
-2. For each, write the *cost of one hour of staleness* in one sentence. Notice that this single
-   question, not the word "real-time," drives the answer.
+    import duckdb
+    con = duckdb.connect()
+    # make ~2 million fake sales rows
+    con.execute("""
+        CREATE TABLE sales AS
+        SELECT i AS id,
+               ['US','UK','IN','DE'][1 + (i % 4)] AS country,
+               (random() * 100)::DECIMAL(10,2) AS revenue
+        FROM range(2_000_000) t(i)
+    """)
+    # a big analytical question (touches few columns, all rows)
+    print(con.execute("SELECT country, SUM(revenue) FROM sales GROUP BY country").fetchall())
+    # a tiny transactional question (one row)
+    print(con.execute("SELECT * FROM sales WHERE id = 12345").fetchall())
+
+Run it. Then write two sentences: which question is "OLAP-shaped" and which is "OLTP-shaped," and
+why running the big one against a live app's database would hurt real users.
+
+**C. Make a non-idempotent step, then fix it.**
+
+    con.execute("CREATE TABLE report AS SELECT * FROM sales WHERE country = 'US'")
+    before = con.execute("SELECT COUNT(*) FROM report").fetchone()[0]
+    # the NON-idempotent move: append the same slice again
+    con.execute("INSERT INTO report SELECT * FROM sales WHERE country = 'US'")
+    after = con.execute("SELECT COUNT(*) FROM report").fetchone()[0]
+    print(before, after)   # after is DOUBLE — re-running corrupted the result
+
+Now make it idempotent: before inserting, delete the `country='US'` rows first
+(`DELETE FROM report WHERE country='US'`), then insert. Run *that* twice and confirm the count
+stays the same. Write one sentence on why a scheduler that auto-retries makes this non-optional.
+
+**D. Batch vs streaming — name the cost of staleness (no code).**
+For three cases — a nightly finance report, a fraud check at checkout, a "trending now" widget —
+decide batch or streaming, and write the *cost of one hour of stale data* for each in a sentence.
+Notice it's that cost, not the word "real-time," that decides.
 
 ---
 
@@ -206,95 +293,87 @@ every downstream query breaks. There is no "no schema" option; there's only *whe
 **Check your understanding (answer in a sentence each):**
 1. Name the five stages of the data engineering lifecycle, in order.
 2. What are the five undercurrents, and why are they not a "final step"?
-3. In one line, what does it mean for a task to be *idempotent*, and why does a pipeline need it?
-4. What is the core difference between batch and streaming data?
-5. What's the difference between ETL and ELT, and what changed in the world to make ELT the
-   default?
-6. What is the difference between an OLTP and an OLAP workload?
-7. Why are analytical stores column-oriented rather than row-oriented?
+3. In one line, what does *idempotent* mean, and which Python operation is a good analogy for it?
+4. What's the core difference between batch and streaming, in "list vs generator" terms?
+5. What's the difference between ETL and ELT, and why is keeping the raw data useful?
+6. What's the difference between an OLTP and an OLAP database, and why do we copy data between them?
+7. Why does an analytics database store data by column instead of by row?
 8. What does a lakehouse add on top of a plain data lake?
-9. What does "schema-on-read vs schema-on-write" decide, and where does each live in the
-   medallion pattern?
-10. Why does decoupling storage from compute matter for cost?
+9. What is a "schema," and what does schema-on-read vs schema-on-write decide?
+10. What does it mean that storage and compute are "separated," and why does that save money?
 
-**Apply it (builder scenarios — answer in 2–3 sentences):**
-11. A teammate proposes pointing the new executive dashboard directly at the production Postgres
-    that runs the app, "to keep it simple." What goes wrong, and what do you propose instead?
-12. Your nightly load is scheduled with a retry-on-failure policy. Last night it failed halfway,
-    retried, and now revenue is double-counted for that day. Diagnose the root cause and give the
-    fix.
-13. A stakeholder insists a report must be "real-time." How do you turn that into an engineering
-    decision, and what's your default if they can't name a cost of staleness?
-14. Requirements for a transformation changed and you now need a field you dropped during loading
-    six months ago. Why does an ELT/lakehouse design save you here, and what would a strict ETL
-    design have cost you?
-15. You're loading semi-structured JSON from an API whose schema occasionally changes silently.
-    Where in the medallion layers do you stay schema-on-read, where do you enforce schema, and
-    why?
+**Apply it (short scenarios — answer in 2–3 sentences):**
+11. A teammate says, "just point the new dashboard at the app's live Postgres database, it's
+    simpler." What goes wrong, and what do you suggest instead?
+12. Your nightly job has auto-retry turned on. Last night it failed halfway, retried, and now one
+    day's revenue is counted twice. What's the root cause, and how do you fix it?
+13. A manager insists a report be "real-time." How do you turn that into a real decision, and what's
+    your default if they can't name a cost of staleness?
+14. Six months ago your loader dropped a field nobody needed. Now someone needs it. Why does an ELT
+    design save you, and what would a strict ETL design have cost you?
+15. You're loading data from an API whose shape changes without warning. Where do you stay
+    schema-on-read, where do you enforce a schema, and why?
 
 **Stretch / discussion (optional):**
-16. The lifecycle calls storage the substrate rather than a single stage. What breaks in your
-    mental model if you treat "storage" as just one step between transform and serve?
-17. Give one realistic case where the *right* answer is genuinely streaming, and articulate
-    exactly which "cost of staleness" justifies the extra operational weight.
+16. We called storage "the substrate," not a step in a line. What goes wrong in your mental model if
+    you picture storage as just one box between "transform" and "serve"?
+17. Give one realistic case where the right answer is genuinely streaming, and say exactly which
+    cost of staleness justifies the extra always-on machinery.
 
 **Answer key (peek only after attempting):**
 1. Generation → ingestion → transformation → storage → serving. · 2. Security, data management,
-DataOps, orchestration, software engineering; they cut across *every* stage, so they're designed
-in from the start, not bolted on. · 3. Running a task twice yields the same end state as running
-it once; pipelines retry/backfill/re-trigger, so non-idempotent tasks corrupt data on re-run. ·
-4. Batch processes a bounded, finite chunk on a schedule; streaming processes an unbounded,
-never-ending event feed as it arrives. · 5. ETL transforms before loading (on separate compute);
-ELT loads raw first then transforms in the warehouse — cheap storage + storage/compute decoupling
-made ELT viable and dominant. · 6. OLTP = many tiny row-oriented reads/writes for an app; OLAP =
-few huge column-oriented scans for analytics. · 7. Analytical queries touch a few columns over
-many rows, so reading only those columns scans far less data and compresses better. · 8. A
-transactional table layer (ACID, schema enforcement, time travel) over cheap open object storage
-— warehouse guarantees on lake economics. · 9. *When* you impose structure: schema-on-read at
-query time (flexible, bronze), schema-on-write at load time (strict, silver/gold). · 10. Cheap
-storage holds everything always, while elastic compute scales to zero when idle — you stop paying
-for a cluster that isn't querying. · 11. Heavy analytical scans lock rows and starve the app;
-copy the data into an OLAP-shaped store (lakehouse/warehouse) and serve the dashboard from there. ·
-12. The load appended rather than overwrote (non-idempotent); switch to MERGE-on-key or
-partition-overwrite for that day so retries are safe. · 13. Ask for the cost of one hour (or one
-minute) of staleness; if they can't name one, build batch — "real-time" without a named cost is a
-batch requirement. · 14. ELT kept the raw bronze data, so you re-transform from source;
-strict ETL discarded the un-modeled field at load, so it's gone — you'd need to re-ingest from the
-source if it's even still available. · 15. Bronze stays schema-on-read (land raw JSON, never lose
-data); enforce schema entering silver (typed, validated) so gold and all downstream consumers
-build on a stable contract. · 16. Storage shapes cost, access patterns, and guarantees for every
-other stage; treating it as one step hides choices like row-vs-columnar, lake-vs-warehouse, and
-retention that actually determine whether the pipeline works. · 17. e.g. fraud blocking at
-checkout — a stale decision lets a fraudulent transaction through, so seconds of latency have
-direct monetary cost that justifies the always-on streaming infrastructure.
+DataOps, orchestration, software engineering; they run under *every* stage, so you design them in
+from the start. · 3. "Safe to run more than once" — like `d[key] = value` (re-running changes
+nothing), unlike `list.append` (re-running adds a duplicate). · 4. Batch = a finite list you can
+see the end of and finish; streaming = a never-ending generator you process forever as items
+arrive. · 5. ETL cleans before storing (keeps only the tidy result); ELT stores raw first then
+cleans — keeping raw lets you re-clean when needs change. · 6. OLTP handles many tiny app
+reads/writes; OLAP handles a few huge analytical scans; we copy OLTP→OLAP so big questions don't
+slow the app. · 7. Analytical questions touch few columns over many rows, so reading just those
+columns moves far less data (and compresses better). · 8. A reliability/structure layer (ACID,
+schema enforcement, time travel) on top of cheap lake storage — warehouse guarantees at lake
+prices. · 9. A schema is the expected fields and types; schema-on-read vs -on-write decides
+*when* you enforce that shape (at query time vs at load time). · 10. Bytes sit in cheap storage
+while processing power is spun up only when needed and turned off after — so you don't pay for an
+idle machine. · 11. Big analytics scans slow the app for real users; copy the data into an
+analytics (OLAP) store and serve the dashboard from there. · 12. The step appended instead of
+replacing (not idempotent); switch to upsert-on-key or replace-that-day so retries are safe. ·
+13. Ask what one hour (or minute) of stale data costs; if they can't name a cost, build batch. ·
+14. ELT kept the raw data, so you re-derive the field from it; strict ETL discarded it at load, so
+it's gone unless you can re-ingest from the source. · 15. Bronze stays schema-on-read (accept
+everything raw, lose nothing); enforce the schema entering silver so gold and all reports build on
+a stable shape. · 16. Storage decides cost, speed, and guarantees for every other stage; treating
+it as one box hides choices (row vs column, lake vs warehouse, how long to keep data) that actually
+decide whether the pipeline works. · 17. e.g. blocking fraud at checkout — a stale decision lets a
+bad transaction through, so seconds of delay have direct money cost that justifies always-on
+streaming.
 
 ---
 
 #### Interview drill (self-test)
 
-Real questions pulled from the data-engineering question bank, scoped to this chapter's
-foundations. Answer out loud or in a line each, then check yourself against the chapter.
+These are real questions from the data-engineering interview bank, scoped to this chapter. As a
+fresher you won't have polished answers to all of them yet — that's fine. Try each in a sentence
+now, then come back and re-answer as the course fills in the gaps. They tell you where you're
+headed.
 
 1. What is a data warehouse, and how does it differ from a data lake?
 2. Can we use both a data lake and a data warehouse in the same project? When would you?
 3. Compare blob storage, a data lake, and Delta Lake.
-4. Explain the bronze–silver–gold (medallion) layer architecture for a data lake.
+4. Explain the bronze–silver–gold (medallion) layers for a data lake.
 5. Describe batch processing. When is it the right choice?
 6. Explain the difference between streaming inserts and batch loads.
 7. What is the difference between OLTP and OLAP systems?
 8. Explain ETL vs ELT, and why ELT is common on modern cloud stacks.
-9. Describe an end-to-end data pipeline you have built or would build, stage by stage.
+9. Describe, stage by stage, an end-to-end data pipeline you would build.
 10. What are the types of data sources, and how do structured, semi-structured, and unstructured
     data differ?
-11. What does a data engineer do, and how is the role different from a data analyst or data
-    scientist?
-12. Design a pipeline to ingest data from OLTP systems into a data warehouse and serve BI
-    dashboards.
-13. How do you implement data quality checks in a pipeline, and what do you check?
-14. A backend analytics table has 2 billion+ rows; the team wants it in a data lake and a 3-month
-    slice in Postgres. How would you design that movement?
-15. What SLAs/SLOs would you define for a data pipeline, and how would you measure and report
-    reliability?
+11. What does a data engineer do, and how is the role different from a data analyst or scientist?
+12. Sketch a pipeline that pulls data from an app's database into a warehouse and feeds a dashboard.
+13. How would you check data quality in a pipeline, and what would you check for?
+14. An app table has 2 billion+ rows; the team wants it in a data lake plus a 3-month slice in
+    Postgres. How would you move it?
+15. What are SLAs and SLOs for a data pipeline, and how would you measure reliability?
 
 _(466 foundation-relevant questions matched in the bank; 15 shown — more in
 [data-eng-questions.md](../data-eng-questions.md).)_
@@ -302,8 +381,8 @@ _(466 foundation-relevant questions matched in the bank; 15 shown — more in
 ---
 
 **Deliverable:** A short note — 6–8 bullets — titled *"What a data platform is, and what that
-means for building one."* Each bullet = one concept + its practical implication. Attach your
-answers to questions 1–15.
+means for building one."* Each bullet = one concept + its practical implication, in your own words.
+Attach your answers to questions 1–15.
 
 **Daily update:** one-liner — done / where you stopped / any blockers.
 
