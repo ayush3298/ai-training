@@ -287,7 +287,7 @@ def save_profile(user_id, profile: Profile):
     )
 ```
 
-How does a fact *become* a profile field? You extract it — a model call that reads the session and emits the typed shape (the same structured-output technique from [Chapter 3](03-structured-output.md)). But once extracted, reading it is pure key access. Maya's name lands in `profile.name` once and is read **verbatim, every turn, forever** — no roll of the retrieval dice.
+How does a fact *become* a profile field? You extract it — a model call that reads the session and emits the typed shape (the same structured-output technique from [Chapter 2, Part C](02-apis-and-integration.md#part-c--structured-output-machine-readable-every-time)). But once extracted, reading it is pure key access. Maya's name lands in `profile.name` once and is read **verbatim, every turn, forever** — no roll of the retrieval dice.
 
 *Build consequence:* Reach for a structured profile when the recall guarantee you need is **"this exact field, deterministically"** — the durable facts you must get right every single time and can name in advance (identity, preferences, entitlements, dates). It's the cheapest to *read* (one keyed lookup, no model call) and the easiest to *show and edit* in the user-facing controls of [Part I](#part-i--user-controls-view-export-edit-and-delete-the-right-to-be-forgotten) — a profile field maps straight onto a settings form. Its limit is the mirror of its strength: it only holds facts you predicted and typed; the open-ended past still belongs to RAG-over-history.
 
